@@ -160,26 +160,26 @@
       </div>
     </div>
 
-    <!-- ฟอร์มเข้าสู่ระบบ (รหัสผ่าน หรือ Gmail) -->
+    <!-- ฟอร์มเข้าสู่ระบบ (Username / Password) -->
     <div id="loginSection" class="card card-main p-4 mb-3 bg-white" style="display: none;">
       <div class="text-center mb-3">
         <div class="rounded-circle bg-primary-subtle text-primary d-inline-flex align-items-center justify-content-center mb-2 shadow-sm" style="width: 58px; height: 58px; font-size: 24px;">
           <i class="fa-solid fa-id-badge"></i>
         </div>
         <h5 class="fw-bold text-dark mb-1">เข้าสู่ระบบลงเวลา</h5>
-        <p class="text-muted small mb-0">เข้าสู่ระบบด้วยรหัสผ่าน หรือลงชื่อเข้าใช้ด้วย Gmail</p>
+        <p class="text-muted small mb-0">เข้าสู่ระบบด้วยชื่อผู้ใช้ (อีเมล) และรหัสผ่าน</p>
       </div>
 
       <div class="mb-3">
-        <label class="form-label fw-bold small text-secondary">อีเมล Gmail <span class="text-danger">*</span></label>
+        <label class="form-label fw-bold small text-secondary">ชื่อผู้ใช้ / อีเมล (Username / Email) <span class="text-danger">*</span></label>
         <div class="input-group">
           <span class="input-group-text bg-light"><i class="fa-solid fa-envelope text-muted"></i></span>
-          <input type="email" id="loginEmailInput" class="form-control" placeholder="name@gmail.com" required>
+          <input type="email" id="loginEmailInput" class="form-control" placeholder="ระบุอีเมล เช่น name@company.com" required>
         </div>
       </div>
 
       <div class="mb-3">
-        <label class="form-label fw-bold small text-secondary">รหัสผ่าน <span class="text-danger">*</span></label>
+        <label class="form-label fw-bold small text-secondary">รหัสผ่าน (Password) <span class="text-danger">*</span></label>
         <div class="input-group">
           <span class="input-group-text bg-light"><i class="fa-solid fa-lock text-muted"></i></span>
           <input type="password" id="loginPasswordInput" class="form-control" placeholder="ระบุรหัสผ่าน (อย่างน้อย 6 ตัวอักษร)" required onkeydown="if(event.key==='Enter') submitPasswordLogin()">
@@ -195,17 +195,7 @@
       </div>
 
       <button class="btn btn-primary w-100 py-2 fw-bold shadow-sm mb-3" onclick="submitPasswordLogin()">
-        <i class="fa-solid fa-arrow-right-to-bracket me-1"></i> เข้าสู่ระบบด้วยรหัสผ่าน
-      </button>
-
-      <div class="d-flex align-items-center my-3">
-        <hr class="flex-grow-1 my-0 text-muted">
-        <span class="px-2 small text-muted">หรือ</span>
-        <hr class="flex-grow-1 my-0 text-muted">
-      </div>
-
-      <button type="button" class="btn btn-outline-danger w-100 py-2 fw-bold mb-3 shadow-sm d-flex align-items-center justify-content-center gap-2" onclick="loginWithGmailAccount()">
-        <i class="fa-brands fa-google text-danger fs-5"></i> ลงชื่อเข้าใช้ผ่าน Gmail
+        <i class="fa-solid fa-arrow-right-to-bracket me-1"></i> เข้าสู่ระบบ
       </button>
 
       <div class="text-center pt-2 border-top">
@@ -227,10 +217,10 @@
       </div>
 
       <div class="mb-3">
-        <label class="form-label fw-bold small text-secondary">อีเมล Gmail <span class="text-danger">*</span></label>
+        <label class="form-label fw-bold small text-secondary">ชื่อผู้ใช้ / อีเมล (Username / Email) <span class="text-danger">*</span></label>
         <div class="input-group">
           <span class="input-group-text bg-light"><i class="fa-solid fa-envelope text-muted"></i></span>
-          <input type="email" id="regEmail" class="form-control" placeholder="name@gmail.com" required>
+          <input type="email" id="regEmail" class="form-control" placeholder="name@company.com" required>
         </div>
       </div>
 
@@ -1150,7 +1140,7 @@
       const password = document.getElementById('loginPasswordInput').value;
 
       if (!email || !email.includes('@')) {
-        Swal.fire('ข้อมูลไม่ถูกต้อง', 'กรุณาระบุอีเมล Gmail ให้ถูกต้อง', 'warning');
+        Swal.fire('ข้อมูลไม่ถูกต้อง', 'กรุณาระบุอีเมลผู้ใช้งานให้ถูกต้อง', 'warning');
         return;
       }
       if (!password) {
@@ -1206,68 +1196,13 @@
       }
     }
 
-    // เข้าสู่ระบบด้วย Gmail
-    async function loginWithGmailAccount() {
-      const { value: email } = await Swal.fire({
-        title: 'ลงชื่อเข้าใช้ผ่าน Gmail',
-        input: 'email',
-        inputLabel: 'ระบุที่อยู่อีเมล Gmail ของคุณ',
-        inputPlaceholder: 'name@gmail.com',
-        showCancelButton: true,
-        confirmButtonText: 'ดำเนินการต่อ',
-        cancelButtonText: 'ยกเลิก',
-        inputValidator: (val) => {
-          if (!val || !val.includes('@')) return 'กรุณากรอกอีเมล Gmail ให้ถูกต้อง';
-        }
-      });
-
-      if (!email) return;
-
-      Swal.fire({
-        title: 'กำลังตรวจสอบบัญชี Gmail...',
-        allowOutsideClick: false,
-        didOpen: () => Swal.showLoading()
-      });
-
-      try {
-        const res = await callApi('loginWithGmail', { email: email.trim().toLowerCase() });
-        if (res && res.success) {
-          if (res.token) {
-            sessionToken = res.token;
-            localStorage.setItem("attendance_session_token", sessionToken);
-          }
-          localStorage.setItem("attendance_user_email", email.trim().toLowerCase());
-          Swal.fire({
-            icon: 'success',
-            title: 'เข้าสู่ระบบสำเร็จ',
-            timer: 1500,
-            showConfirmButton: false
-          });
-          loadUserData(email.trim().toLowerCase());
-        } else if (res && res.notRegistered) {
-          Swal.fire({
-            icon: 'info',
-            title: 'ยังไม่พบบัญชีในระบบ',
-            text: res.message,
-            confirmButtonText: 'ลงทะเบียนพนักงานใหม่'
-          }).then(() => {
-            showRegisterSection(email.trim().toLowerCase());
-          });
-        } else {
-          Swal.fire('เข้าสู่ระบบไม่สำเร็จ', (res && res.message) || 'กรุณาลองใหม่อีกครั้ง', 'warning');
-        }
-      } catch (err) {
-        Swal.fire('เกิดข้อผิดพลาด', err.message, 'error');
-      }
-    }
-
     // ตั้งรหัสผ่านครั้งแรกสำหรับบัญชีเดิมที่ยังไม่มีรหัสผ่าน
     async function showFirstTimePasswordSetup() {
       const emailInput = document.getElementById('loginEmailInput').value.trim();
       const { value: formValues } = await Swal.fire({
         title: 'ตั้งรหัสผ่านสำหรับเข้าใช้งาน',
         html:
-          `<div class="text-start mb-2"><label class="small fw-bold text-secondary">อีเมล Gmail</label>` +
+          `<div class="text-start mb-2"><label class="small fw-bold text-secondary">ชื่อผู้ใช้ / อีเมล (Email)</label>` +
           `<input id="setupEmail" type="email" class="form-control form-control-sm" value="${emailInput}" placeholder="name@gmail.com"></div>` +
           `<div class="text-start mb-2"><label class="small fw-bold text-secondary">กำหนดรหัสผ่านใหม่ (อย่างน้อย 6 ตัวอักษร)</label>` +
           `<input id="setupNewPass" type="password" class="form-control form-control-sm" placeholder="รหัสผ่านใหม่"></div>` +
