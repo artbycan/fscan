@@ -348,6 +348,13 @@
             <i class="fa-solid fa-building-circle-check me-1"></i>จัดการสาขา
           </button>
         </li>
+        <!-- แท็บจัดการและอนุมัติการลางาน (เฉพาะ Admin) -->
+        <li class="nav-item" id="adminLeavesNavTab" style="display: none;">
+          <button class="nav-link fw-bold position-relative" data-bs-toggle="pill" data-bs-target="#tab-leaves-manage" onclick="onOpenLeavesManageTab()">
+            <i class="fa-solid fa-calendar-check me-1"></i>อนุมัติการลา
+            <span id="pendingLeavesBadgeCount" class="badge rounded-pill bg-danger ms-1" style="display: none; font-size: 0.7rem;">0</span>
+          </button>
+        </li>
       </ul>
 
       <div class="tab-content">
@@ -452,6 +459,96 @@
           </div>
         </div>
 
+        <!-- 6. แท็บจัดการและอนุมัติการลางาน (เฉพาะ Admin) -->
+        <div class="tab-pane fade" id="tab-leaves-manage">
+          <div class="card card-main p-4 bg-white mb-3">
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+              <div>
+                <h5 class="fw-bold text-dark mb-0">
+                  <i class="fa-solid fa-calendar-check text-primary me-2"></i>จัดการและอนุมัติคำขอลางาน (Admin)
+                </h5>
+                <small class="text-muted">ตรวจสอบ อนุมัติ หรือไม่อนุมัติคำขอลางานของพนักงาน พร้อมระบุเหตุผลได้</small>
+              </div>
+              <div class="d-flex flex-wrap align-items-center gap-2">
+                <select id="leaveFilterStatus" class="form-select form-select-sm" style="width: 160px;" onchange="filterAdminLeavesTable()">
+                  <option value="ALL">สถานะทั้งหมด</option>
+                  <option value="PENDING" selected>รออนุมัติ (Pending)</option>
+                  <option value="APPROVED">อนุมัติแล้ว (Approved)</option>
+                  <option value="REJECTED">ไม่อนุมัติ (Rejected)</option>
+                </select>
+                <select id="leaveFilterType" class="form-select form-select-sm" style="width: 150px;" onchange="filterAdminLeavesTable()">
+                  <option value="ALL">ทุกประเภทการลา</option>
+                  <option value="SICK">ลาป่วย</option>
+                  <option value="BUSINESS">ลากิจ</option>
+                  <option value="VACATION">ลาพักร้อน</option>
+                </select>
+                <button class="btn btn-primary btn-sm px-3 fw-bold" onclick="loadLeavesManagement()">
+                  <i class="fa-solid fa-arrows-rotate me-1"></i>รีเฟรช
+                </button>
+                <button class="btn btn-success btn-sm px-3 fw-bold shadow-sm" onclick="exportLeavesToExcel()">
+                  <i class="fa-solid fa-file-excel me-1"></i>ส่งออก Excel
+                </button>
+              </div>
+            </div>
+
+            <!-- การ์ดสรุปสถานะคำขอลางาน -->
+            <div class="row g-2 mb-3">
+              <div class="col-6 col-md-3">
+                <div class="stat-card bg-warning-subtle border-warning-subtle text-center">
+                  <div class="small text-warning-emphasis fw-bold">รอการอนุมัติ</div>
+                  <div class="fs-4 fw-bold text-warning-emphasis mt-1" id="sumLeavePending">-</div>
+                  <div class="text-muted" style="font-size: 0.72rem;">รายการ</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-3">
+                <div class="stat-card bg-success-subtle border-success-subtle text-center">
+                  <div class="small text-success fw-bold">อนุมัติแล้ว</div>
+                  <div class="fs-4 fw-bold text-success mt-1" id="sumLeaveApproved">-</div>
+                  <div class="text-muted" style="font-size: 0.72rem;">รายการ</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-3">
+                <div class="stat-card bg-danger-subtle border-danger-subtle text-center">
+                  <div class="small text-danger fw-bold">ไม่อนุมัติ</div>
+                  <div class="fs-4 fw-bold text-danger mt-1" id="sumLeaveRejected">-</div>
+                  <div class="text-muted" style="font-size: 0.72rem;">รายการ</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-3">
+                <div class="stat-card bg-light border text-center">
+                  <div class="small text-secondary fw-bold">คำขอลาทั้งหมด</div>
+                  <div class="fs-4 fw-bold text-dark mt-1" id="sumLeaveTotal">-</div>
+                  <div class="text-muted" style="font-size: 0.72rem;">รายการ</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ตารางรายการคำขอลางาน -->
+            <div class="table-responsive">
+              <table class="table table-hover table-bordered table-dashboard align-middle mb-0">
+                <thead>
+                  <tr class="text-center">
+                    <th>รหัส / วันที่ยื่น</th>
+                    <th class="text-start">พนักงาน</th>
+                    <th>สาขา</th>
+                    <th>ประเภทการลา</th>
+                    <th>ช่วงวันที่ลา (จำนวนวัน)</th>
+                    <th class="text-start">เหตุผลการลา</th>
+                    <th>สถานะ</th>
+                    <th>ผู้พิจารณา / วันที่</th>
+                    <th>การดำเนินการ (Action)</th>
+                  </tr>
+                </thead>
+                <tbody id="adminLeavesTableBody">
+                  <tr>
+                    <td colspan="9" class="text-center text-muted py-4">กำลังโหลดรายการคำขอลางาน...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
         <!-- 2.1 แท็บตารางสรุปรายวันของฉัน (สำหรับ User ทุกคน) -->
         <div class="tab-pane fade" id="tab-user-daily">
           <div class="card card-main p-4 bg-white mb-3">
@@ -540,6 +637,96 @@
                 <tbody id="userDailyTableBody">
                   <tr>
                     <td colspan="10" class="text-center text-muted py-4">กำลังโหลดข้อมูลสรุปรายวัน...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- 6. แท็บจัดการและอนุมัติการลางาน (เฉพาะ Admin) -->
+        <div class="tab-pane fade" id="tab-leaves-manage">
+          <div class="card card-main p-4 bg-white mb-3">
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+              <div>
+                <h5 class="fw-bold text-dark mb-0">
+                  <i class="fa-solid fa-calendar-check text-primary me-2"></i>จัดการและอนุมัติคำขอลางาน (Admin)
+                </h5>
+                <small class="text-muted">ตรวจสอบ อนุมัติ หรือไม่อนุมัติคำขอลางานของพนักงาน พร้อมระบุเหตุผลได้</small>
+              </div>
+              <div class="d-flex flex-wrap align-items-center gap-2">
+                <select id="leaveFilterStatus" class="form-select form-select-sm" style="width: 160px;" onchange="filterAdminLeavesTable()">
+                  <option value="ALL">สถานะทั้งหมด</option>
+                  <option value="PENDING" selected>รออนุมัติ (Pending)</option>
+                  <option value="APPROVED">อนุมัติแล้ว (Approved)</option>
+                  <option value="REJECTED">ไม่อนุมัติ (Rejected)</option>
+                </select>
+                <select id="leaveFilterType" class="form-select form-select-sm" style="width: 150px;" onchange="filterAdminLeavesTable()">
+                  <option value="ALL">ทุกประเภทการลา</option>
+                  <option value="SICK">ลาป่วย</option>
+                  <option value="BUSINESS">ลากิจ</option>
+                  <option value="VACATION">ลาพักร้อน</option>
+                </select>
+                <button class="btn btn-primary btn-sm px-3 fw-bold" onclick="loadLeavesManagement()">
+                  <i class="fa-solid fa-arrows-rotate me-1"></i>รีเฟรช
+                </button>
+                <button class="btn btn-success btn-sm px-3 fw-bold shadow-sm" onclick="exportLeavesToExcel()">
+                  <i class="fa-solid fa-file-excel me-1"></i>ส่งออก Excel
+                </button>
+              </div>
+            </div>
+
+            <!-- การ์ดสรุปสถานะคำขอลางาน -->
+            <div class="row g-2 mb-3">
+              <div class="col-6 col-md-3">
+                <div class="stat-card bg-warning-subtle border-warning-subtle text-center">
+                  <div class="small text-warning-emphasis fw-bold">รอการอนุมัติ</div>
+                  <div class="fs-4 fw-bold text-warning-emphasis mt-1" id="sumLeavePending">-</div>
+                  <div class="text-muted" style="font-size: 0.72rem;">รายการ</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-3">
+                <div class="stat-card bg-success-subtle border-success-subtle text-center">
+                  <div class="small text-success fw-bold">อนุมัติแล้ว</div>
+                  <div class="fs-4 fw-bold text-success mt-1" id="sumLeaveApproved">-</div>
+                  <div class="text-muted" style="font-size: 0.72rem;">รายการ</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-3">
+                <div class="stat-card bg-danger-subtle border-danger-subtle text-center">
+                  <div class="small text-danger fw-bold">ไม่อนุมัติ</div>
+                  <div class="fs-4 fw-bold text-danger mt-1" id="sumLeaveRejected">-</div>
+                  <div class="text-muted" style="font-size: 0.72rem;">รายการ</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-3">
+                <div class="stat-card bg-light border text-center">
+                  <div class="small text-secondary fw-bold">คำขอลาทั้งหมด</div>
+                  <div class="fs-4 fw-bold text-dark mt-1" id="sumLeaveTotal">-</div>
+                  <div class="text-muted" style="font-size: 0.72rem;">รายการ</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ตารางรายการคำขอลางาน -->
+            <div class="table-responsive">
+              <table class="table table-hover table-bordered table-dashboard align-middle mb-0">
+                <thead>
+                  <tr class="text-center">
+                    <th>รหัส / วันที่ยื่น</th>
+                    <th class="text-start">พนักงาน</th>
+                    <th>สาขา</th>
+                    <th>ประเภทการลา</th>
+                    <th>ช่วงวันที่ลา (จำนวนวัน)</th>
+                    <th class="text-start">เหตุผลการลา</th>
+                    <th>สถานะ</th>
+                    <th>ผู้พิจารณา / วันที่</th>
+                    <th>การดำเนินการ (Action)</th>
+                  </tr>
+                </thead>
+                <tbody id="adminLeavesTableBody">
+                  <tr>
+                    <td colspan="9" class="text-center text-muted py-4">กำลังโหลดรายการคำขอลางาน...</td>
                   </tr>
                 </tbody>
               </table>
@@ -646,6 +833,96 @@
           </div>
         </div>
 
+        <!-- 6. แท็บจัดการและอนุมัติการลางาน (เฉพาะ Admin) -->
+        <div class="tab-pane fade" id="tab-leaves-manage">
+          <div class="card card-main p-4 bg-white mb-3">
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+              <div>
+                <h5 class="fw-bold text-dark mb-0">
+                  <i class="fa-solid fa-calendar-check text-primary me-2"></i>จัดการและอนุมัติคำขอลางาน (Admin)
+                </h5>
+                <small class="text-muted">ตรวจสอบ อนุมัติ หรือไม่อนุมัติคำขอลางานของพนักงาน พร้อมระบุเหตุผลได้</small>
+              </div>
+              <div class="d-flex flex-wrap align-items-center gap-2">
+                <select id="leaveFilterStatus" class="form-select form-select-sm" style="width: 160px;" onchange="filterAdminLeavesTable()">
+                  <option value="ALL">สถานะทั้งหมด</option>
+                  <option value="PENDING" selected>รออนุมัติ (Pending)</option>
+                  <option value="APPROVED">อนุมัติแล้ว (Approved)</option>
+                  <option value="REJECTED">ไม่อนุมัติ (Rejected)</option>
+                </select>
+                <select id="leaveFilterType" class="form-select form-select-sm" style="width: 150px;" onchange="filterAdminLeavesTable()">
+                  <option value="ALL">ทุกประเภทการลา</option>
+                  <option value="SICK">ลาป่วย</option>
+                  <option value="BUSINESS">ลากิจ</option>
+                  <option value="VACATION">ลาพักร้อน</option>
+                </select>
+                <button class="btn btn-primary btn-sm px-3 fw-bold" onclick="loadLeavesManagement()">
+                  <i class="fa-solid fa-arrows-rotate me-1"></i>รีเฟรช
+                </button>
+                <button class="btn btn-success btn-sm px-3 fw-bold shadow-sm" onclick="exportLeavesToExcel()">
+                  <i class="fa-solid fa-file-excel me-1"></i>ส่งออก Excel
+                </button>
+              </div>
+            </div>
+
+            <!-- การ์ดสรุปสถานะคำขอลางาน -->
+            <div class="row g-2 mb-3">
+              <div class="col-6 col-md-3">
+                <div class="stat-card bg-warning-subtle border-warning-subtle text-center">
+                  <div class="small text-warning-emphasis fw-bold">รอการอนุมัติ</div>
+                  <div class="fs-4 fw-bold text-warning-emphasis mt-1" id="sumLeavePending">-</div>
+                  <div class="text-muted" style="font-size: 0.72rem;">รายการ</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-3">
+                <div class="stat-card bg-success-subtle border-success-subtle text-center">
+                  <div class="small text-success fw-bold">อนุมัติแล้ว</div>
+                  <div class="fs-4 fw-bold text-success mt-1" id="sumLeaveApproved">-</div>
+                  <div class="text-muted" style="font-size: 0.72rem;">รายการ</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-3">
+                <div class="stat-card bg-danger-subtle border-danger-subtle text-center">
+                  <div class="small text-danger fw-bold">ไม่อนุมัติ</div>
+                  <div class="fs-4 fw-bold text-danger mt-1" id="sumLeaveRejected">-</div>
+                  <div class="text-muted" style="font-size: 0.72rem;">รายการ</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-3">
+                <div class="stat-card bg-light border text-center">
+                  <div class="small text-secondary fw-bold">คำขอลาทั้งหมด</div>
+                  <div class="fs-4 fw-bold text-dark mt-1" id="sumLeaveTotal">-</div>
+                  <div class="text-muted" style="font-size: 0.72rem;">รายการ</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ตารางรายการคำขอลางาน -->
+            <div class="table-responsive">
+              <table class="table table-hover table-bordered table-dashboard align-middle mb-0">
+                <thead>
+                  <tr class="text-center">
+                    <th>รหัส / วันที่ยื่น</th>
+                    <th class="text-start">พนักงาน</th>
+                    <th>สาขา</th>
+                    <th>ประเภทการลา</th>
+                    <th>ช่วงวันที่ลา (จำนวนวัน)</th>
+                    <th class="text-start">เหตุผลการลา</th>
+                    <th>สถานะ</th>
+                    <th>ผู้พิจารณา / วันที่</th>
+                    <th>การดำเนินการ (Action)</th>
+                  </tr>
+                </thead>
+                <tbody id="adminLeavesTableBody">
+                  <tr>
+                    <td colspan="9" class="text-center text-muted py-4">กำลังโหลดรายการคำขอลางาน...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
         <!-- 3. แท็บแดชบอร์ดสรุปรายเดือน (เฉพาะแอดมิน) -->
         <div class="tab-pane fade" id="tab-admin">
           <div class="card card-main p-4 bg-white mb-3">
@@ -745,6 +1022,96 @@
           </div>
         </div>
 
+        <!-- 6. แท็บจัดการและอนุมัติการลางาน (เฉพาะ Admin) -->
+        <div class="tab-pane fade" id="tab-leaves-manage">
+          <div class="card card-main p-4 bg-white mb-3">
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+              <div>
+                <h5 class="fw-bold text-dark mb-0">
+                  <i class="fa-solid fa-calendar-check text-primary me-2"></i>จัดการและอนุมัติคำขอลางาน (Admin)
+                </h5>
+                <small class="text-muted">ตรวจสอบ อนุมัติ หรือไม่อนุมัติคำขอลางานของพนักงาน พร้อมระบุเหตุผลได้</small>
+              </div>
+              <div class="d-flex flex-wrap align-items-center gap-2">
+                <select id="leaveFilterStatus" class="form-select form-select-sm" style="width: 160px;" onchange="filterAdminLeavesTable()">
+                  <option value="ALL">สถานะทั้งหมด</option>
+                  <option value="PENDING" selected>รออนุมัติ (Pending)</option>
+                  <option value="APPROVED">อนุมัติแล้ว (Approved)</option>
+                  <option value="REJECTED">ไม่อนุมัติ (Rejected)</option>
+                </select>
+                <select id="leaveFilterType" class="form-select form-select-sm" style="width: 150px;" onchange="filterAdminLeavesTable()">
+                  <option value="ALL">ทุกประเภทการลา</option>
+                  <option value="SICK">ลาป่วย</option>
+                  <option value="BUSINESS">ลากิจ</option>
+                  <option value="VACATION">ลาพักร้อน</option>
+                </select>
+                <button class="btn btn-primary btn-sm px-3 fw-bold" onclick="loadLeavesManagement()">
+                  <i class="fa-solid fa-arrows-rotate me-1"></i>รีเฟรช
+                </button>
+                <button class="btn btn-success btn-sm px-3 fw-bold shadow-sm" onclick="exportLeavesToExcel()">
+                  <i class="fa-solid fa-file-excel me-1"></i>ส่งออก Excel
+                </button>
+              </div>
+            </div>
+
+            <!-- การ์ดสรุปสถานะคำขอลางาน -->
+            <div class="row g-2 mb-3">
+              <div class="col-6 col-md-3">
+                <div class="stat-card bg-warning-subtle border-warning-subtle text-center">
+                  <div class="small text-warning-emphasis fw-bold">รอการอนุมัติ</div>
+                  <div class="fs-4 fw-bold text-warning-emphasis mt-1" id="sumLeavePending">-</div>
+                  <div class="text-muted" style="font-size: 0.72rem;">รายการ</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-3">
+                <div class="stat-card bg-success-subtle border-success-subtle text-center">
+                  <div class="small text-success fw-bold">อนุมัติแล้ว</div>
+                  <div class="fs-4 fw-bold text-success mt-1" id="sumLeaveApproved">-</div>
+                  <div class="text-muted" style="font-size: 0.72rem;">รายการ</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-3">
+                <div class="stat-card bg-danger-subtle border-danger-subtle text-center">
+                  <div class="small text-danger fw-bold">ไม่อนุมัติ</div>
+                  <div class="fs-4 fw-bold text-danger mt-1" id="sumLeaveRejected">-</div>
+                  <div class="text-muted" style="font-size: 0.72rem;">รายการ</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-3">
+                <div class="stat-card bg-light border text-center">
+                  <div class="small text-secondary fw-bold">คำขอลาทั้งหมด</div>
+                  <div class="fs-4 fw-bold text-dark mt-1" id="sumLeaveTotal">-</div>
+                  <div class="text-muted" style="font-size: 0.72rem;">รายการ</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ตารางรายการคำขอลางาน -->
+            <div class="table-responsive">
+              <table class="table table-hover table-bordered table-dashboard align-middle mb-0">
+                <thead>
+                  <tr class="text-center">
+                    <th>รหัส / วันที่ยื่น</th>
+                    <th class="text-start">พนักงาน</th>
+                    <th>สาขา</th>
+                    <th>ประเภทการลา</th>
+                    <th>ช่วงวันที่ลา (จำนวนวัน)</th>
+                    <th class="text-start">เหตุผลการลา</th>
+                    <th>สถานะ</th>
+                    <th>ผู้พิจารณา / วันที่</th>
+                    <th>การดำเนินการ (Action)</th>
+                  </tr>
+                </thead>
+                <tbody id="adminLeavesTableBody">
+                  <tr>
+                    <td colspan="9" class="text-center text-muted py-4">กำลังโหลดรายการคำขอลางาน...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
         <!-- 4. แท็บอนุมัติผู้ใช้งานและจัดการสิทธิ์ + ตั้งค่าโอทีต่อชั่วโมง (เฉพาะแอดมิน) -->
         <div class="tab-pane fade" id="tab-users">
           <!-- ส่วนที่ 1: รายการผู้สมัครใหม่ที่รออนุมัติ (Status = INACTIVE) -->
@@ -815,6 +1182,96 @@
                 <tbody id="allUsersManageTableBody">
                   <tr>
                     <td colspan="9" class="text-center text-muted py-4">กำลังโหลดข้อมูลพนักงาน...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- 6. แท็บจัดการและอนุมัติการลางาน (เฉพาะ Admin) -->
+        <div class="tab-pane fade" id="tab-leaves-manage">
+          <div class="card card-main p-4 bg-white mb-3">
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+              <div>
+                <h5 class="fw-bold text-dark mb-0">
+                  <i class="fa-solid fa-calendar-check text-primary me-2"></i>จัดการและอนุมัติคำขอลางาน (Admin)
+                </h5>
+                <small class="text-muted">ตรวจสอบ อนุมัติ หรือไม่อนุมัติคำขอลางานของพนักงาน พร้อมระบุเหตุผลได้</small>
+              </div>
+              <div class="d-flex flex-wrap align-items-center gap-2">
+                <select id="leaveFilterStatus" class="form-select form-select-sm" style="width: 160px;" onchange="filterAdminLeavesTable()">
+                  <option value="ALL">สถานะทั้งหมด</option>
+                  <option value="PENDING" selected>รออนุมัติ (Pending)</option>
+                  <option value="APPROVED">อนุมัติแล้ว (Approved)</option>
+                  <option value="REJECTED">ไม่อนุมัติ (Rejected)</option>
+                </select>
+                <select id="leaveFilterType" class="form-select form-select-sm" style="width: 150px;" onchange="filterAdminLeavesTable()">
+                  <option value="ALL">ทุกประเภทการลา</option>
+                  <option value="SICK">ลาป่วย</option>
+                  <option value="BUSINESS">ลากิจ</option>
+                  <option value="VACATION">ลาพักร้อน</option>
+                </select>
+                <button class="btn btn-primary btn-sm px-3 fw-bold" onclick="loadLeavesManagement()">
+                  <i class="fa-solid fa-arrows-rotate me-1"></i>รีเฟรช
+                </button>
+                <button class="btn btn-success btn-sm px-3 fw-bold shadow-sm" onclick="exportLeavesToExcel()">
+                  <i class="fa-solid fa-file-excel me-1"></i>ส่งออก Excel
+                </button>
+              </div>
+            </div>
+
+            <!-- การ์ดสรุปสถานะคำขอลางาน -->
+            <div class="row g-2 mb-3">
+              <div class="col-6 col-md-3">
+                <div class="stat-card bg-warning-subtle border-warning-subtle text-center">
+                  <div class="small text-warning-emphasis fw-bold">รอการอนุมัติ</div>
+                  <div class="fs-4 fw-bold text-warning-emphasis mt-1" id="sumLeavePending">-</div>
+                  <div class="text-muted" style="font-size: 0.72rem;">รายการ</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-3">
+                <div class="stat-card bg-success-subtle border-success-subtle text-center">
+                  <div class="small text-success fw-bold">อนุมัติแล้ว</div>
+                  <div class="fs-4 fw-bold text-success mt-1" id="sumLeaveApproved">-</div>
+                  <div class="text-muted" style="font-size: 0.72rem;">รายการ</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-3">
+                <div class="stat-card bg-danger-subtle border-danger-subtle text-center">
+                  <div class="small text-danger fw-bold">ไม่อนุมัติ</div>
+                  <div class="fs-4 fw-bold text-danger mt-1" id="sumLeaveRejected">-</div>
+                  <div class="text-muted" style="font-size: 0.72rem;">รายการ</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-3">
+                <div class="stat-card bg-light border text-center">
+                  <div class="small text-secondary fw-bold">คำขอลาทั้งหมด</div>
+                  <div class="fs-4 fw-bold text-dark mt-1" id="sumLeaveTotal">-</div>
+                  <div class="text-muted" style="font-size: 0.72rem;">รายการ</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ตารางรายการคำขอลางาน -->
+            <div class="table-responsive">
+              <table class="table table-hover table-bordered table-dashboard align-middle mb-0">
+                <thead>
+                  <tr class="text-center">
+                    <th>รหัส / วันที่ยื่น</th>
+                    <th class="text-start">พนักงาน</th>
+                    <th>สาขา</th>
+                    <th>ประเภทการลา</th>
+                    <th>ช่วงวันที่ลา (จำนวนวัน)</th>
+                    <th class="text-start">เหตุผลการลา</th>
+                    <th>สถานะ</th>
+                    <th>ผู้พิจารณา / วันที่</th>
+                    <th>การดำเนินการ (Action)</th>
+                  </tr>
+                </thead>
+                <tbody id="adminLeavesTableBody">
+                  <tr>
+                    <td colspan="9" class="text-center text-muted py-4">กำลังโหลดรายการคำขอลางาน...</td>
                   </tr>
                 </tbody>
               </table>
@@ -915,6 +1372,96 @@
             </div>
           </div>
         </div>
+        <!-- 6. แท็บจัดการและอนุมัติการลางาน (เฉพาะ Admin) -->
+        <div class="tab-pane fade" id="tab-leaves-manage">
+          <div class="card card-main p-4 bg-white mb-3">
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+              <div>
+                <h5 class="fw-bold text-dark mb-0">
+                  <i class="fa-solid fa-calendar-check text-primary me-2"></i>จัดการและอนุมัติคำขอลางาน (Admin)
+                </h5>
+                <small class="text-muted">ตรวจสอบ อนุมัติ หรือไม่อนุมัติคำขอลางานของพนักงาน พร้อมระบุเหตุผลได้</small>
+              </div>
+              <div class="d-flex flex-wrap align-items-center gap-2">
+                <select id="leaveFilterStatus" class="form-select form-select-sm" style="width: 160px;" onchange="filterAdminLeavesTable()">
+                  <option value="ALL">สถานะทั้งหมด</option>
+                  <option value="PENDING" selected>รออนุมัติ (Pending)</option>
+                  <option value="APPROVED">อนุมัติแล้ว (Approved)</option>
+                  <option value="REJECTED">ไม่อนุมัติ (Rejected)</option>
+                </select>
+                <select id="leaveFilterType" class="form-select form-select-sm" style="width: 150px;" onchange="filterAdminLeavesTable()">
+                  <option value="ALL">ทุกประเภทการลา</option>
+                  <option value="SICK">ลาป่วย</option>
+                  <option value="BUSINESS">ลากิจ</option>
+                  <option value="VACATION">ลาพักร้อน</option>
+                </select>
+                <button class="btn btn-primary btn-sm px-3 fw-bold" onclick="loadLeavesManagement()">
+                  <i class="fa-solid fa-arrows-rotate me-1"></i>รีเฟรช
+                </button>
+                <button class="btn btn-success btn-sm px-3 fw-bold shadow-sm" onclick="exportLeavesToExcel()">
+                  <i class="fa-solid fa-file-excel me-1"></i>ส่งออก Excel
+                </button>
+              </div>
+            </div>
+
+            <!-- การ์ดสรุปสถานะคำขอลางาน -->
+            <div class="row g-2 mb-3">
+              <div class="col-6 col-md-3">
+                <div class="stat-card bg-warning-subtle border-warning-subtle text-center">
+                  <div class="small text-warning-emphasis fw-bold">รอการอนุมัติ</div>
+                  <div class="fs-4 fw-bold text-warning-emphasis mt-1" id="sumLeavePending">-</div>
+                  <div class="text-muted" style="font-size: 0.72rem;">รายการ</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-3">
+                <div class="stat-card bg-success-subtle border-success-subtle text-center">
+                  <div class="small text-success fw-bold">อนุมัติแล้ว</div>
+                  <div class="fs-4 fw-bold text-success mt-1" id="sumLeaveApproved">-</div>
+                  <div class="text-muted" style="font-size: 0.72rem;">รายการ</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-3">
+                <div class="stat-card bg-danger-subtle border-danger-subtle text-center">
+                  <div class="small text-danger fw-bold">ไม่อนุมัติ</div>
+                  <div class="fs-4 fw-bold text-danger mt-1" id="sumLeaveRejected">-</div>
+                  <div class="text-muted" style="font-size: 0.72rem;">รายการ</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-3">
+                <div class="stat-card bg-light border text-center">
+                  <div class="small text-secondary fw-bold">คำขอลาทั้งหมด</div>
+                  <div class="fs-4 fw-bold text-dark mt-1" id="sumLeaveTotal">-</div>
+                  <div class="text-muted" style="font-size: 0.72rem;">รายการ</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ตารางรายการคำขอลางาน -->
+            <div class="table-responsive">
+              <table class="table table-hover table-bordered table-dashboard align-middle mb-0">
+                <thead>
+                  <tr class="text-center">
+                    <th>รหัส / วันที่ยื่น</th>
+                    <th class="text-start">พนักงาน</th>
+                    <th>สาขา</th>
+                    <th>ประเภทการลา</th>
+                    <th>ช่วงวันที่ลา (จำนวนวัน)</th>
+                    <th class="text-start">เหตุผลการลา</th>
+                    <th>สถานะ</th>
+                    <th>ผู้พิจารณา / วันที่</th>
+                    <th>การดำเนินการ (Action)</th>
+                  </tr>
+                </thead>
+                <tbody id="adminLeavesTableBody">
+                  <tr>
+                    <td colspan="9" class="text-center text-muted py-4">กำลังโหลดรายการคำขอลางาน...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
         <!-- 6. แท็บจัดการและอนุมัติการลางาน (เฉพาะ Admin) -->
         <div class="tab-pane fade" id="tab-leaves-manage">
           <div class="card card-main p-4 bg-white mb-3">

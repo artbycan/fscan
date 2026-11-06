@@ -345,6 +345,9 @@ function adminSetPassword_(adminEmail, targetUserId, newPassword) {
   }
   for (var i = 1; i < users.length; i++) {
     if (users[i][0] === targetUserId) {
+      try {
+        sheet.getRange(i + 1, PASSWORD_COL_).clearDataValidations();
+      } catch (e) {}
       sheet.getRange(i + 1, PASSWORD_COL_).setValue(makePasswordRecord_(newPassword));
       return { success: true, message: "ตั้งรหัสผ่านใหม่ให้ " + (users[i][1] || targetUserId) + " เรียบร้อยแล้ว" };
     }
@@ -468,6 +471,27 @@ function ensureUserHeaders_(sheet) {
       }
     }
   }
+
+  // ปลดล็อค Data Validation ที่เข้มงวดในชีต Users (Status และ Role) เพื่อป้องกัน Error ละเมิดกฎการตรวจสอบข้อมูล
+  try {
+    var maxRows = Math.max(sheet.getMaxRows(), 100);
+    var statusColRange = sheet.getRange(2, 6, maxRows - 1, 1);
+    var statusRule = SpreadsheetApp.newDataValidation()
+      .requireValueInList(["ACTIVE", "INACTIVE", "active", "inactive", "Active", "Inactive"], true)
+      .setAllowInvalid(true)
+      .build();
+    statusColRange.setDataValidation(statusRule);
+  } catch (e) {}
+
+  try {
+    var maxRows2 = Math.max(sheet.getMaxRows(), 100);
+    var roleColRange = sheet.getRange(2, 3, maxRows2 - 1, 1);
+    var roleRule = SpreadsheetApp.newDataValidation()
+      .requireValueInList(["admin", "user", "Admin", "User", "ADMIN", "USER"], true)
+      .setAllowInvalid(true)
+      .build();
+    roleColRange.setDataValidation(roleRule);
+  } catch (e) {}
 }
 
 // ตรวจสอบและสร้างหัวตาราง Branches
@@ -478,6 +502,11 @@ function ensureBranchHeaders_(sheet) {
       "branch_id", "branch_name", "lat", "lng", "radius_meters", "work_start", "work_end"
     ]);
   }
+  // ปลดล็อค Data Validation ในชีต Branches
+  try {
+    var maxRows = Math.max(sheet.getMaxRows(), 50);
+    sheet.getRange(2, 1, maxRows - 1, 10).clearDataValidations();
+  } catch (e) {}
 }
 
 // ตรวจสอบและสร้างหัวตาราง Leaves พร้อมจัดการ Data Validation
@@ -652,6 +681,10 @@ function registerUser_(data) {
     var newId = "U" + ("000" + (maxNum + 1)).slice(-3);
     var defaultOtHour = 0; // ค่าโอทีกำหนดโดยแอดมินเท่านั้น
     
+    try {
+      sheet.getRange(nextRow, 1, 1, 10).clearDataValidations();
+    } catch (e) {}
+
     sheet.appendRow([
       newId,
       cleanName,
@@ -747,6 +780,9 @@ function saveBranch_(req) {
       for (var i = 1; i < branches.length; i++) {
         if (branches[i][0] && branches[i][0].toString().trim() === branchId) {
           var rowIdx = i + 1;
+          try {
+            branchSheet.getRange(rowIdx, 1, 1, 10).clearDataValidations();
+          } catch (e) {}
           branchSheet.getRange(rowIdx, 2).setValue(branchName);
           branchSheet.getRange(rowIdx, 3).setValue(lat);
           branchSheet.getRange(rowIdx, 4).setValue(lng);
@@ -933,6 +969,11 @@ function updateUserPermission_(req) {
 
         if (isNaN(newOtHour) || newOtHour < 0) newOtHour = currentOtHour;
 
+        // ปลดล็อค / ล้าง Data Validation ของแถวที่จะแก้ไข เพื่อป้องกัน Google Sheets เกิดข้อยกเว้นการละเมิดกฎ
+        try {
+          userSheet.getRange(rowIndex, 1, 1, 10).clearDataValidations();
+        } catch (e) {}
+
         userSheet.getRange(rowIndex, 2).setValue(newName);
         userSheet.getRange(rowIndex, 3).setValue(newRole);
         userSheet.getRange(rowIndex, 4).setValue(newBranch);
@@ -974,6 +1015,9 @@ function updateUserOtRate_(req) {
     for (var r = 1; r < users.length; r++) {
       if (users[r][0] === targetUserId) {
         var rowIndex = r + 1;
+        try {
+          userSheet.getRange(rowIndex, 7, 1, 2).clearDataValidations();
+        } catch (e) {}
         userSheet.getRange(rowIndex, 7).setValue(otRatePerHour);
         userSheet.getRange(rowIndex, 8).setFormula("=IF(ISNUMBER(G" + rowIndex + "), G" + rowIndex + "/60, 0)");
         return {
