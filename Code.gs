@@ -989,6 +989,28 @@ function ensureLogHeaders_(sheet) {
       sheet.getRange(1, 14).setValue("Device ID");
     }
   }
+
+  // ปลดล็อค Data Validation ที่เข้มงวดในคอลัมน์ H (Status) และคอลัมน์ D (Type) ของชีต Logs
+  // เพื่อป้องกันข้อผิดพลาด "ละเมิดกฎการตรวจสอบข้อมูลที่ตั้งไว้ในเซลล์นี้" ซึ่งทำให้เซิร์ฟเวอร์เกิด Exception
+  try {
+    var maxRows = Math.max(sheet.getMaxRows(), 100);
+    var statusColRange = sheet.getRange(2, 8, maxRows - 1, 1);
+    var statusRule = SpreadsheetApp.newDataValidation()
+      .requireValueInList(["ON_TIME", "LATE", "NORMAL", "OUT_OF_RANGE", "SUCCESS", "OVERTIME", "EARLY_LEAVE"], true)
+      .setAllowInvalid(true)
+      .build();
+    statusColRange.setDataValidation(statusRule);
+  } catch (e) {}
+
+  try {
+    var maxRows2 = Math.max(sheet.getMaxRows(), 100);
+    var typeColRange = sheet.getRange(2, 4, maxRows2 - 1, 1);
+    var typeRule = SpreadsheetApp.newDataValidation()
+      .requireValueInList(["CHECK_IN", "CHECK_OUT"], true)
+      .setAllowInvalid(true)
+      .build();
+    typeColRange.setDataValidation(typeRule);
+  } catch (e) {}
 }
 
 // ฟังก์ชันแปลงจำนวนนาทีเป็นข้อความ ชั่วโมง/นาที ที่อ่านง่าย
@@ -1157,6 +1179,11 @@ function recordAttendance_(payload) {
       var photoUrl = saveImageToDrive_(payload.imageBase64, payload.userId);
       var logId = "LOG" + Utilities.formatDate(now, tz, "yyyyMMddHHmmss");
 
+      try {
+        var nextInRow = logSheet.getLastRow() + 1;
+        logSheet.getRange(nextInRow, 8).clearDataValidations();
+      } catch (e) {}
+
       logSheet.appendRow([
         logId,
         payload.userId,
@@ -1214,6 +1241,9 @@ function recordAttendance_(payload) {
       var photoUrl = saveImageToDrive_(payload.imageBase64, payload.userId);
 
       if (existingCheckOutRow > 0) {
+        try {
+          logSheet.getRange(existingCheckOutRow, 8).clearDataValidations();
+        } catch (e) {}
         logSheet.getRange(existingCheckOutRow, 3).setValue(timestampStr);
         logSheet.getRange(existingCheckOutRow, 6).setValue(distance);
         logSheet.getRange(existingCheckOutRow, 7).setValue(photoUrl);
@@ -1236,6 +1266,10 @@ function recordAttendance_(payload) {
         };
       } else {
         var logId = "LOG" + Utilities.formatDate(now, tz, "yyyyMMddHHmmss");
+        try {
+          var nextOutRow = logSheet.getLastRow() + 1;
+          logSheet.getRange(nextOutRow, 8).clearDataValidations();
+        } catch (e) {}
         logSheet.appendRow([
           logId,
           payload.userId,
