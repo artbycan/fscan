@@ -71,7 +71,10 @@ function apiCall(token, fnName, args) {
     saveBranch: "saveBranch",
     deleteBranch: "deleteBranch",
     getUserDailySummary: "getUserDailySummary",
-    getAdminDailySummary: "getAdminDailySummary"
+    getAdminDailySummary: "getAdminDailySummary",
+    getLeavesForAdmin: "getLeavesForAdmin",
+    updateLeaveStatus: "updateLeaveStatus",
+    getUserLeaves: "getUserLeaves"
   };
   req.action = actionMap[fnName] || fnName;
 
@@ -159,6 +162,13 @@ function handleApiRequest_(req) {
       return getUserDailySummary_(me.userId, req.monthStr || "");
     case "getAdminDailySummary":
       return getAdminDailySummary_(req.dateStr || "", me.email, req.filterBranchId || req.branchId || "ALL");
+    case "getLeavesForAdmin":
+      return getLeavesForAdmin_(me.email);
+    case "updateLeaveStatus":
+      req.adminEmail = me.email;
+      return updateLeaveStatus_(req);
+    case "getUserLeaves":
+      return getUserLeaves_(me.userId);
   }
   return { success: false, message: "Action not recognized" };
 }
@@ -468,6 +478,59 @@ function ensureBranchHeaders_(sheet) {
       "branch_id", "branch_name", "lat", "lng", "radius_meters", "work_start", "work_end"
     ]);
   }
+}
+
+// ตรวจสอบและสร้างหัวตาราง Leaves พร้อมจัดการ Data Validation
+function ensureLeaveHeaders_(sheet) {
+  if (!sheet) return;
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow([
+      "leave_id", "user_id", "leave_type", "start_date", "end_date", "reason", "status", "created_at", "approved_by", "approved_at", "reject_reason"
+    ]);
+  } else {
+    var lastCol = Math.max(sheet.getLastColumn(), 11);
+    var headerRow = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    var expected = [
+      { col: 1, name: "leave_id" },
+      { col: 2, name: "user_id" },
+      { col: 3, name: "leave_type" },
+      { col: 4, name: "start_date" },
+      { col: 5, name: "end_date" },
+      { col: 6, name: "reason" },
+      { col: 7, name: "status" },
+      { col: 8, name: "created_at" },
+      { col: 9, name: "approved_by" },
+      { col: 10, name: "approved_at" },
+      { col: 11, name: "reject_reason" }
+    ];
+    for (var i = 0; i < expected.length; i++) {
+      if (!headerRow[expected[i].col - 1] || headerRow[expected[i].col - 1].toString().trim() === "") {
+        sheet.getRange(1, expected[i].col).setValue(expected[i].name);
+      }
+    }
+  }
+
+  // ปลดล็อค Data Validation ในคอลัมน์ G (Status) ของ Leaves
+  try {
+    var maxR = Math.max(sheet.getMaxRows() - 1, 100);
+    var statusRange = sheet.getRange(2, 7, maxR, 1);
+    var rule = SpreadsheetApp.newDataValidation()
+      .requireValueInList(["PENDING", "APPROVED", "REJECTED", "CANCELLED"], true)
+      .setAllowInvalid(true)
+      .build();
+    statusRange.setDataValidation(rule);
+  } catch (e) {}
+
+  // ปลดล็อค Data Validation ในคอลัมน์ C (leave_type) ของ Leaves
+  try {
+    var maxR2 = Math.max(sheet.getMaxRows() - 1, 100);
+    var typeRange = sheet.getRange(2, 3, maxR2, 1);
+    var rule2 = SpreadsheetApp.newDataValidation()
+      .requireValueInList(["SICK", "BUSINESS", "VACATION"], true)
+      .setAllowInvalid(true)
+      .build();
+    typeRange.setDataValidation(rule2);
+  } catch (e) {}
 }
 
 // แปลงค่าเวลาในชีต Branches (รองรับทั้ง Date object และ String "HH:mm")
@@ -1323,21 +1386,292 @@ function submitLeaveRequest_(data) {
     }
 
     var leaveSheet = ss.getSheetByName("Leaves");
-    var leaveId = "L" + ("000" + leaveSheet.getLastRow()).slice(-3);
-    
+    ensureLeaveHeaders_(leaveSheet);
+
+    var tz = Session.getScriptTimeZone();
+    var now = new Date();
+    var nowStr = Utilities.formatDate(now, tz, "yyyy-MM-dd HH:mm:ss");
+    var leaveId = "L" + Utilities.formatDate(now, tz, "yyyyMMddHHmmss");
+
+    try {
+      var nextRow = leaveSheet.getLastRow() + 1;
+      leaveSheet.getRange(nextRow, 7).clearDataValidations();
+    } catch (e) {}
+
     leaveSheet.appendRow([
       leaveId,
       data.userId,
-      data.leaveType,
+      (data.leaveType || "SICK").toString().toUpperCase(),
       data.startDate,
       data.endDate,
-      data.reason,
-      "PENDING"
+      data.reason || "",
+      "PENDING",
+      nowStr,
+      "",
+      "",
+      ""
     ]);
-    
-    return { success: true, message: "ส่งคำขอลาเรียบร้อยแล้ว รอผู้ดูแลระบบอนุมัติ" };
+
+    return {
+      success: true,
+      message: "ส่งคำขอลาเรียบร้อยแล้ว รอผู้ดูแลระบบอนุมัติ",
+      leaveId: leaveId
+    };
   } catch (e) {
-    return { success: false, message: e.toString() };
+    return { success: false, message: "ยื่นใบลาล้มเหลว: " + e.toString() };
+  }
+}
+
+// 8.1 ฟังก์ชันดึงประวัติการลางานของพนักงานคนนั้น (สำหรับหน้า User)
+function getUserLeaves_(userId) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var leaveSheet = ss.getSheetByName("Leaves");
+    if (!leaveSheet) return { success: true, leaves: [] };
+
+    ensureLeaveHeaders_(leaveSheet);
+    var leavesData = leaveSheet.getDataRange().getValues();
+    var tz = Session.getScriptTimeZone();
+    var leaveTypeLabels = { SICK: "ลาป่วย", BUSINESS: "ลากิจ", VACATION: "ลาพักร้อน" };
+    var statusLabels = {
+      PENDING: "รออนุมัติ",
+      APPROVED: "อนุมัติแล้ว",
+      REJECTED: "ไม่อนุมัติ",
+      CANCELLED: "ยกเลิก"
+    };
+
+    var userLeaves = [];
+    for (var i = 1; i < leavesData.length; i++) {
+      var row = leavesData[i];
+      if (row[1] !== userId) continue;
+
+      var sDate = (row[3] instanceof Date) ? Utilities.formatDate(row[3], tz, "yyyy-MM-dd") : (row[3] || "").toString().substring(0, 10);
+      var eDate = (row[4] instanceof Date) ? Utilities.formatDate(row[4], tz, "yyyy-MM-dd") : (row[4] || "").toString().substring(0, 10);
+      var status = (row[6] || "PENDING").toString().toUpperCase();
+
+      var daysCount = 1;
+      try {
+        if (sDate && eDate) {
+          var d1 = new Date(sDate);
+          var d2 = new Date(eDate);
+          var diffTime = d2.getTime() - d1.getTime();
+          daysCount = Math.max(1, Math.round(diffTime / (1000 * 3600 * 24)) + 1);
+        }
+      } catch (e) {}
+
+      userLeaves.push({
+        leaveId: row[0],
+        leaveType: row[2],
+        leaveTypeLabel: leaveTypeLabels[row[2]] || row[2],
+        startDate: sDate,
+        endDate: eDate,
+        daysCount: daysCount,
+        reason: row[5] || "",
+        status: status,
+        statusLabel: statusLabels[status] || status,
+        createdAt: (row[7] instanceof Date) ? Utilities.formatDate(row[7], tz, "yyyy-MM-dd HH:mm:ss") : (row[7] || "").toString(),
+        approvedBy: row[8] || "",
+        approvedAt: (row[9] instanceof Date) ? Utilities.formatDate(row[9], tz, "yyyy-MM-dd HH:mm:ss") : (row[9] || "").toString(),
+        rejectReason: row[10] || ""
+      });
+    }
+
+    userLeaves.reverse();
+    return { success: true, leaves: userLeaves };
+  } catch (err) {
+    return { success: false, message: err.toString(), leaves: [] };
+  }
+}
+
+// 8.2 ฟังก์ชันดึงรายการคำขอลางานทั้งหมดสำหรับผู้ดูแลระบบ (Admin)
+function getLeavesForAdmin_(adminEmail) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var userSheet = ss.getSheetByName("Users");
+    var leaveSheet = ss.getSheetByName("Leaves");
+    var branchSheet = ss.getSheetByName("Branches");
+
+    ensureUserHeaders_(userSheet);
+    ensureLeaveHeaders_(leaveSheet);
+
+    var usersData = userSheet ? userSheet.getDataRange().getValues() : [];
+    var leavesData = leaveSheet ? leaveSheet.getDataRange().getValues() : [];
+    var branchesData = branchSheet ? branchSheet.getDataRange().getValues() : [];
+
+    if (!verifyAdminAccess_(usersData, adminEmail)) {
+      return { success: false, message: "ปฏิเสธการเข้าถึง: เฉพาะผู้ดูแลระบบ (Admin) เท่านั้น" };
+    }
+
+    var branchMap = {};
+    for (var b = 1; b < branchesData.length; b++) {
+      if (branchesData[b][0]) {
+        branchMap[branchesData[b][0]] = branchesData[b][1];
+      }
+    }
+
+    var userMap = {};
+    for (var u = 1; u < usersData.length; u++) {
+      var uid = usersData[u][0];
+      if (uid) {
+        userMap[uid] = {
+          name: usersData[u][1],
+          email: usersData[u][4],
+          branchId: usersData[u][3],
+          branchName: branchMap[usersData[u][3]] || usersData[u][3] || "-"
+        };
+      }
+    }
+
+    var tz = Session.getScriptTimeZone();
+    var leaveTypeLabels = { SICK: "ลาป่วย", BUSINESS: "ลากิจ", VACATION: "ลาพักร้อน" };
+    var statusLabels = {
+      PENDING: "รออนุมัติ",
+      APPROVED: "อนุมัติแล้ว",
+      REJECTED: "ไม่อนุมัติ",
+      CANCELLED: "ยกเลิก"
+    };
+
+    var leaves = [];
+    var pendingCount = 0;
+    var approvedCount = 0;
+    var rejectedCount = 0;
+
+    for (var i = 1; i < leavesData.length; i++) {
+      var row = leavesData[i];
+      var lId = row[0];
+      if (!lId) continue;
+
+      var uid = row[1];
+      var uInfo = userMap[uid] || { name: uid, email: "", branchId: "", branchName: "-" };
+      var lType = (row[2] || "SICK").toString().toUpperCase();
+      var sDate = (row[3] instanceof Date) ? Utilities.formatDate(row[3], tz, "yyyy-MM-dd") : (row[3] || "").toString().substring(0, 10);
+      var eDate = (row[4] instanceof Date) ? Utilities.formatDate(row[4], tz, "yyyy-MM-dd") : (row[4] || "").toString().substring(0, 10);
+      var reason = row[5] || "";
+      var status = (row[6] || "PENDING").toString().toUpperCase();
+      var createdAt = (row[7] instanceof Date) ? Utilities.formatDate(row[7], tz, "yyyy-MM-dd HH:mm:ss") : (row[7] || "").toString();
+      var approvedBy = row[8] || "";
+      var approvedAt = (row[9] instanceof Date) ? Utilities.formatDate(row[9], tz, "yyyy-MM-dd HH:mm:ss") : (row[9] || "").toString();
+      var rejectReason = row[10] || "";
+
+      var daysCount = 1;
+      try {
+        if (sDate && eDate) {
+          var d1 = new Date(sDate);
+          var d2 = new Date(eDate);
+          var diffTime = d2.getTime() - d1.getTime();
+          daysCount = Math.max(1, Math.round(diffTime / (1000 * 3600 * 24)) + 1);
+        }
+      } catch (e) {}
+
+      if (status === "PENDING") pendingCount++;
+      else if (status === "APPROVED") approvedCount++;
+      else if (status === "REJECTED") rejectedCount++;
+
+      leaves.push({
+        rowIndex: i + 1,
+        leaveId: lId,
+        userId: uid,
+        userName: uInfo.name,
+        userEmail: uInfo.email,
+        branchName: uInfo.branchName,
+        leaveType: lType,
+        leaveTypeLabel: leaveTypeLabels[lType] || lType,
+        startDate: sDate,
+        endDate: eDate,
+        daysCount: daysCount,
+        reason: reason,
+        status: status,
+        statusLabel: statusLabels[status] || status,
+        createdAt: createdAt,
+        approvedBy: approvedBy,
+        approvedAt: approvedAt,
+        rejectReason: rejectReason
+      });
+    }
+
+    leaves.sort(function(a, b) {
+      if (a.status === "PENDING" && b.status !== "PENDING") return -1;
+      if (a.status !== "PENDING" && b.status === "PENDING") return 1;
+      return (b.createdAt || b.startDate).localeCompare(a.createdAt || a.startDate);
+    });
+
+    return {
+      success: true,
+      leaves: leaves,
+      pendingCount: pendingCount,
+      approvedCount: approvedCount,
+      rejectedCount: rejectedCount,
+      totalCount: leaves.length
+    };
+  } catch (err) {
+    return { success: false, message: "โหลดข้อมูลวันลาล้มเหลว: " + err.toString() };
+  }
+}
+
+// 8.3 ฟังก์ชันอนุมัติหรือไม่อนุมัติคำขอลางาน (Admin)
+function updateLeaveStatus_(req) {
+  try {
+    var adminEmail = req.adminEmail;
+    var leaveId = req.leaveId;
+    var newStatus = (req.status || "").toString().trim().toUpperCase();
+    var rejectReason = (req.rejectReason || "").toString().trim();
+
+    if (!leaveId || (newStatus !== "APPROVED" && newStatus !== "REJECTED" && newStatus !== "PENDING")) {
+      return { success: false, message: "ข้อมูลการอนุมัติไม่ถูกต้อง" };
+    }
+
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var userSheet = ss.getSheetByName("Users");
+    var leaveSheet = ss.getSheetByName("Leaves");
+
+    ensureUserHeaders_(userSheet);
+    ensureLeaveHeaders_(leaveSheet);
+
+    var usersData = userSheet.getDataRange().getValues();
+    if (!verifyAdminAccess_(usersData, adminEmail)) {
+      return { success: false, message: "ปฏิเสธการเข้าถึง: เฉพาะผู้ดูแลระบบ (Admin) เท่านั้น" };
+    }
+
+    var leavesData = leaveSheet.getDataRange().getValues();
+    var targetRow = -1;
+    var targetUser = "";
+    for (var i = 1; i < leavesData.length; i++) {
+      if (leavesData[i][0] && leavesData[i][0].toString().trim() === leaveId) {
+        targetRow = i + 1;
+        targetUser = leavesData[i][1];
+        break;
+      }
+    }
+
+    if (targetRow < 0) {
+      return { success: false, message: "ไม่พบข้อมูลคำขอลางานรหัส " + leaveId };
+    }
+
+    var tz = Session.getScriptTimeZone();
+    var now = new Date();
+    var nowStr = Utilities.formatDate(now, tz, "yyyy-MM-dd HH:mm:ss");
+
+    try {
+      leaveSheet.getRange(targetRow, 7).clearDataValidations();
+    } catch (e) {}
+
+    leaveSheet.getRange(targetRow, 7).setValue(newStatus);
+    leaveSheet.getRange(targetRow, 9).setValue(adminEmail);
+    leaveSheet.getRange(targetRow, 10).setValue(nowStr);
+    if (rejectReason || newStatus === "REJECTED") {
+      leaveSheet.getRange(targetRow, 11).setValue(rejectReason);
+    } else if (newStatus === "APPROVED") {
+      leaveSheet.getRange(targetRow, 11).setValue("");
+    }
+
+    var actionLabel = newStatus === "APPROVED" ? "อนุมัติคำขอลางาน" : (newStatus === "REJECTED" ? "ไม่อนุมัติคำขอลางาน" : "เปลี่ยนสถานะคำขอลางาน");
+    return {
+      success: true,
+      message: actionLabel + " (รหัส " + leaveId + ") เรียบร้อยแล้ว",
+      status: newStatus
+    };
+  } catch (err) {
+    return { success: false, message: "อัปเดตสถานะการลาล้มเหลว: " + err.toString() };
   }
 }
 
