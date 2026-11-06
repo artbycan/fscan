@@ -24,7 +24,7 @@
       transition: max-width 0.25s ease;
     }
     .app-container.admin-wide {
-      max-width: 1020px;
+      max-width: 1080px;
     }
     .card-main {
       border-radius: 18px;
@@ -102,8 +102,8 @@
     .nav-pills .nav-link {
       border-radius: 12px;
       color: #6c757d;
-      padding: 10px 6px;
-      font-size: 0.85rem;
+      padding: 9px 6px;
+      font-size: 0.82rem;
     }
     .nav-pills .nav-link.active {
       background-color: #0d6efd;
@@ -263,8 +263,14 @@
         <!-- แท็บอนุมัติผู้ใช้และจัดการสิทธิ์ (เฉพาะ Admin) -->
         <li class="nav-item" id="adminUsersNavTab" style="display: none;">
           <button class="nav-link fw-bold position-relative" data-bs-toggle="pill" data-bs-target="#tab-users" onclick="onOpenUsersManageTab()">
-            <i class="fa-solid fa-user-shield me-1"></i>อนุมัติ/จัดการสิทธิ์
+            <i class="fa-solid fa-user-shield me-1"></i>จัดการสิทธิ์/OT
             <span id="pendingBadgeCount" class="badge rounded-pill bg-danger ms-1" style="display: none; font-size: 0.7rem;">0</span>
+          </button>
+        </li>
+        <!-- แท็บจัดการสาขา (เฉพาะ Admin) -->
+        <li class="nav-item" id="adminBranchesNavTab" style="display: none;">
+          <button class="nav-link fw-bold" data-bs-toggle="pill" data-bs-target="#tab-branches" onclick="onOpenBranchesManageTab()">
+            <i class="fa-solid fa-building-circle-check me-1"></i>จัดการสาขา
           </button>
         </li>
       </ul>
@@ -364,10 +370,13 @@
                 </h5>
                 <small class="text-muted">เข้าถึงได้เฉพาะผู้ดูแลระบบ (Admin) | คำนวณขาด ลา มา สาย เวลาโอที และเงินค่าโอที</small>
               </div>
-              <div class="d-flex align-items-center gap-2">
-                <input type="month" id="dashboardMonthPicker" class="form-control form-control-sm" style="width: 165px;" onchange="loadAdminDashboard()">
+              <div class="d-flex flex-wrap align-items-center gap-2">
+                <input type="month" id="dashboardMonthPicker" class="form-control form-control-sm" style="width: 155px;" onchange="loadAdminDashboard()">
                 <button class="btn btn-primary btn-sm px-3 fw-bold" onclick="loadAdminDashboard()">
                   <i class="fa-solid fa-arrows-rotate me-1"></i>คำนวณใหม่
+                </button>
+                <button class="btn btn-success btn-sm px-3 fw-bold shadow-sm" onclick="exportDashboardToExcel()">
+                  <i class="fa-solid fa-file-excel me-1"></i>ส่งออก Excel (.xlsx)
                 </button>
               </div>
             </div>
@@ -450,7 +459,7 @@
           </div>
         </div>
 
-        <!-- 4. แท็บอนุมัติผู้ใช้งานและจัดการสิทธิ์ (เฉพาะแอดมิน) -->
+        <!-- 4. แท็บอนุมัติผู้ใช้งานและจัดการสิทธิ์ + ตั้งค่าโอทีต่อชั่วโมง (เฉพาะแอดมิน) -->
         <div class="tab-pane fade" id="tab-users">
           <!-- ส่วนที่ 1: รายการผู้สมัครใหม่ที่รออนุมัติ (Status = INACTIVE) -->
           <div class="card card-main p-4 bg-white mb-3 border-start border-warning border-4">
@@ -459,7 +468,7 @@
                 <h5 class="fw-bold text-dark mb-0">
                   <i class="fa-solid fa-user-check text-warning me-2"></i>รายการรออนุมัติเข้าใช้งาน (INACTIVE)
                 </h5>
-                <small class="text-muted">ผู้ใช้งานที่เพิ่งลงทะเบียนใหม่ จะต้องได้รับการอนุมัติจากแอดมินก่อนจึงจะเข้าใช้งานระบบได้</small>
+                <small class="text-muted">ผู้ใช้งานที่เพิ่งลงทะเบียนใหม่ สามารถกำหนดค่าโอทีเริ่มต้นและกดอนุมัติให้เข้าใช้งานได้ทันที</small>
               </div>
               <button class="btn btn-outline-primary btn-sm px-3 fw-bold" onclick="loadUsersManagement()">
                 <i class="fa-solid fa-arrows-rotate me-1"></i>รีเฟรชข้อมูล
@@ -473,27 +482,28 @@
                     <th class="text-start">รหัส / ชื่อ-นามสกุล</th>
                     <th class="text-start">อีเมล</th>
                     <th>สาขา</th>
+                    <th>กำหนดค่าโอที/ชม. (บาท)</th>
                     <th>สถานะ</th>
                     <th>การดำเนินการ</th>
                   </tr>
                 </thead>
                 <tbody id="pendingUsersTableBody">
                   <tr>
-                    <td colspan="5" class="text-center text-muted py-3">กำลังโหลดรายการรออนุมัติ...</td>
+                    <td colspan="6" class="text-center text-muted py-3">กำลังโหลดรายการรออนุมัติ...</td>
                   </tr>
                 </tbody>
               </table>
             </div>
           </div>
 
-          <!-- ส่วนที่ 2: ตารางจัดการสิทธิ์พนักงานทั้งหมด (เปลี่ยน Role Admin/User, เปิด/ระงับการใช้งาน, ย้ายสาขา, ตั้งค่าโอที) -->
+          <!-- ส่วนที่ 2: ตารางจัดการสิทธิ์พนักงานและตั้งค่าโอทีต่อชั่วโมงทั้งหมด -->
           <div class="card card-main p-4 bg-white mb-3">
             <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
               <div>
                 <h5 class="fw-bold text-dark mb-0">
-                  <i class="fa-solid fa-users-gear text-primary me-2"></i>จัดการสิทธิ์และสถานะพนักงานทั้งหมด
+                  <i class="fa-solid fa-users-gear text-primary me-2"></i>จัดการสิทธิ์ สถานะ และตั้งค่าโอทีต่อชั่วโมงของพนักงาน
                 </h5>
-                <small class="text-muted">กำหนดสิทธิ์ผู้ดูแลระบบ (Admin / User), เปลี่ยนสถานะ (ACTIVE / INACTIVE), สาขา และอัตราค่าโอที</small>
+                <small class="text-muted">แก้ไขชื่อ, สาขา, ระดับสิทธิ์ (Admin/User), สถานะ (ACTIVE/INACTIVE) และค่าโอทีต่อชั่วโมง (คำนวณโอทีต่อนาทีอัตโนมัติ)</small>
               </div>
               <div class="d-flex align-items-center gap-2">
                 <span class="badge bg-success-subtle text-success border px-3 py-2" id="totalActiveUsersBadge">ACTIVE: 0</span>
@@ -511,12 +521,107 @@
                     <th>ระดับสิทธิ์ (Role)</th>
                     <th>สถานะบัญชี (Status)</th>
                     <th>ค่าโอที/ชม. (บาท)</th>
+                    <th>โอที/นาที (บาท)</th>
                     <th>บันทึก / จัดการ</th>
                   </tr>
                 </thead>
                 <tbody id="allUsersManageTableBody">
                   <tr>
-                    <td colspan="7" class="text-center text-muted py-4">กำลังโหลดข้อมูลพนักงาน...</td>
+                    <td colspan="8" class="text-center text-muted py-4">กำลังโหลดข้อมูลพนักงาน...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- 5. แท็บจัดการสาขา ตำแหน่งที่ตั้ง เวลาเข้า-ออกงาน (เฉพาะแอดมิน) -->
+        <div class="tab-pane fade" id="tab-branches">
+          <!-- ฟอร์มเพิ่ม / แก้ไขสาขา -->
+          <div class="card card-main p-4 bg-white mb-3 border-start border-primary border-4">
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+              <div>
+                <h5 class="fw-bold text-dark mb-0" id="branchFormTitle">
+                  <i class="fa-solid fa-building-circle-plus text-primary me-2"></i>เพิ่มสาขาใหม่ / ตั้งค่าเวลาเข้า-ออกงาน
+                </h5>
+                <small class="text-muted">กำหนดชื่อสาขา พิกัด GPS (ละติจูด/ลองจิจูด) รัศมีที่อนุญาตให้สแกน และเวลาเข้า-ออกงานของสาขา</small>
+              </div>
+              <button type="button" class="btn btn-outline-success btn-sm px-3 fw-bold" onclick="fillBranchCurrentGps()">
+                <i class="fa-solid fa-location-crosshairs me-1"></i>ดึงพิกัด GPS ปัจจุบันใส่ฟอร์ม
+              </button>
+            </div>
+
+            <div class="row g-3">
+              <div class="col-md-2">
+                <label class="form-label small fw-bold text-secondary">รหัสสาขา</label>
+                <input type="text" id="formBranchId" class="form-control form-control-sm bg-light" placeholder="อัตโนมัติ (เช่น BR01)" readonly>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label small fw-bold text-secondary">ชื่อสาขา <span class="text-danger">*</span></label>
+                <input type="text" id="formBranchName" class="form-control form-control-sm" placeholder="เช่น สำนักงานใหญ่ (เชียงใหม่)">
+              </div>
+              <div class="col-md-2">
+                <label class="form-label small fw-bold text-secondary">เวลาเข้างาน <span class="text-danger">*</span></label>
+                <input type="time" id="formWorkStart" class="form-control form-control-sm" value="08:30">
+              </div>
+              <div class="col-md-2">
+                <label class="form-label small fw-bold text-secondary">เวลาออกงาน <span class="text-danger">*</span></label>
+                <input type="time" id="formWorkEnd" class="form-control form-control-sm" value="17:30">
+              </div>
+              <div class="col-md-2">
+                <label class="form-label small fw-bold text-secondary">รัศมีสแกน (เมตร) <span class="text-danger">*</span></label>
+                <input type="number" id="formBranchRadius" class="form-control form-control-sm" value="200" min="10">
+              </div>
+
+              <div class="col-md-4">
+                <label class="form-label small fw-bold text-secondary">ละติจูด (Latitude) <span class="text-danger">*</span></label>
+                <input type="number" id="formBranchLat" class="form-control form-control-sm" placeholder="เช่น 18.781233" step="any">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label small fw-bold text-secondary">ลองจิจูด (Longitude) <span class="text-danger">*</span></label>
+                <input type="number" id="formBranchLng" class="form-control form-control-sm" placeholder="เช่น 98.997269" step="any">
+              </div>
+              <div class="col-md-4 d-flex align-items-end gap-2">
+                <button type="button" class="btn btn-primary btn-sm px-4 fw-bold flex-grow-1" onclick="submitBranchForm()">
+                  <i class="fa-solid fa-floppy-disk me-1"></i>บันทึกข้อมูลสาขา
+                </button>
+                <button type="button" class="btn btn-light border btn-sm px-3 text-secondary" onclick="resetBranchForm()">
+                  ล้างฟอร์ม
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ตารางรายชื่อสาขาทั้งหมด -->
+          <div class="card card-main p-4 bg-white mb-3">
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+              <div>
+                <h5 class="fw-bold text-dark mb-0">
+                  <i class="fa-solid fa-map-location-dot text-primary me-2"></i>รายชื่อสาขาทั้งหมดในระบบ
+                </h5>
+                <small class="text-muted">คลิกปุ่ม "แก้ไข" เพื่อโหลดข้อมูลสาขาขึ้นไปแก้ไขด้านบน หรือคลิกที่พิกัดเพื่อดูแผนที่ Google Maps</small>
+              </div>
+              <button class="btn btn-outline-primary btn-sm px-3 fw-bold" onclick="loadBranchesManagement()">
+                <i class="fa-solid fa-arrows-rotate me-1"></i>รีเฟรชรายชื่อสาขา
+              </button>
+            </div>
+
+            <div class="table-responsive">
+              <table class="table table-hover table-bordered table-dashboard align-middle mb-0">
+                <thead>
+                  <tr class="text-center">
+                    <th>รหัสสาขา</th>
+                    <th class="text-start">ชื่อสาขา</th>
+                    <th>พิกัดที่ตั้ง (Lat, Lng)</th>
+                    <th>รัศมี (เมตร)</th>
+                    <th class="text-success">เวลาเข้างาน</th>
+                    <th class="text-danger">เวลาออกงาน</th>
+                    <th>จัดการ</th>
+                  </tr>
+                </thead>
+                <tbody id="branchesManageTableBody">
+                  <tr>
+                    <td colspan="7" class="text-center text-muted py-4">กำลังโหลดข้อมูลสาขา...</td>
                   </tr>
                 </tbody>
               </table>
@@ -530,6 +635,8 @@
   <!-- Scripts -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <!-- SheetJS (xlsx) สำหรับส่งออกรายงานสรุปรายเดือนเป็นไฟล์ Excel (.xlsx) -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script>
     // URL Backend Google Apps Script Web App
     const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw9uAPBl43LhV3di_jjutBi1vNjIXaqCD2vqt9tY1NRVfU4ktF83-KkYPMFXPPk0-_E/exec';
@@ -538,6 +645,7 @@
     let branches = [];
     let currentPosition = null;
     let videoStream = null;
+    let lastDashboardResponse = null;
 
     // ฟังก์ชันเชื่อมต่อไปยัง Google Apps Script ผ่าน POST
     async function callApi(action, data = {}) {
@@ -646,6 +754,15 @@
       loadUserData(email);
     }
 
+    function populateBranchSelectDropdowns() {
+      const branchSelect = document.getElementById('regBranch');
+      if (!branchSelect) return;
+      branchSelect.innerHTML = '';
+      branches.forEach(b => {
+        branchSelect.innerHTML += `<option value="${b.branchId}">${b.branchName} (${b.workStart}-${b.workEnd})</option>`;
+      });
+    }
+
     // โหลดข้อมูลผู้ใช้จาก Google Sheets
     async function loadUserData(email) {
       Swal.fire({
@@ -660,12 +777,7 @@
         Swal.close();
 
         branches = res.branches || [];
-
-        const branchSelect = document.getElementById('regBranch');
-        branchSelect.innerHTML = '';
-        branches.forEach(b => {
-          branchSelect.innerHTML += `<option value="${b.branchId}">${b.branchName}</option>`;
-        });
+        populateBranchSelectDropdowns();
 
         if (res.user) {
           currentUser = res.user;
@@ -686,7 +798,6 @@
           document.getElementById('loginSection').style.display = 'none';
           document.getElementById('registerSection').style.display = 'none';
 
-          // หากสถานะเป็น INACTIVE ให้แสดงหน้ารออนุมัติจากแอดมิน ไม่ให้เข้าใช้งานระบบหลัก
           if (userStatus !== 'ACTIVE') {
             document.getElementById('mainSection').style.display = 'none';
             document.getElementById('pendingApprovalSection').style.display = 'block';
@@ -696,13 +807,14 @@
           document.getElementById('pendingApprovalSection').style.display = 'none';
           document.getElementById('mainSection').style.display = 'block';
 
-          // แสดงแท็บแดชบอร์ดและแท็บอนุมัติ/จัดการสิทธิ์ เฉพาะ Admin เท่านั้น
+          // แสดงแท็บสำหรับ Admin เท่านั้น
           document.getElementById('adminNavTab').style.display = isAdmin ? 'block' : 'none';
           document.getElementById('adminUsersNavTab').style.display = isAdmin ? 'block' : 'none';
+          document.getElementById('adminBranchesNavTab').style.display = isAdmin ? 'block' : 'none';
 
           const userBranch = branches.find(b => b.branchId === currentUser.branchId);
           if (userBranch) {
-            document.getElementById('branchBadge').innerText = userBranch.branchName;
+            document.getElementById('branchBadge').innerText = `${userBranch.branchName} (${userBranch.workStart}-${userBranch.workEnd})`;
           }
 
           loadRecentLogs();
@@ -713,7 +825,6 @@
             refreshPendingCountBadge();
           }
         } else {
-          // หากไม่มีประวัติ ให้แสดงหน้าลงทะเบียน
           document.getElementById('userName').innerText = "พนักงานใหม่";
           document.getElementById('userEmail').innerText = email;
           document.getElementById('regEmail').value = email;
@@ -729,7 +840,6 @@
       }
     }
 
-    // ดึงจำนวนผู้รออนุมัติมาแสดงบน Badge ของแอดมิน
     async function refreshPendingCountBadge() {
       try {
         const res = await callApi('getAllUsersForAdmin', { adminEmail: currentUser.email });
@@ -899,29 +1009,238 @@
       loadUsersManagement();
     }
 
-    // โหลดข้อมูลหน้าอนุมัติและจัดการสิทธิ์พนักงาน
+    // เปิดแท็บ จัดการสาขา
+    function onOpenBranchesManageTab() {
+      setContainerWide(true);
+      loadBranchesManagement();
+    }
+
+    // ==========================================
+    // ระบบจัดการสาขา (เพิ่ม / แก้ไข / ลบ / ดึงพิกัด GPS)
+    // ==========================================
+    async function loadBranchesManagement() {
+      if (!currentUser || (currentUser.role || '').toLowerCase() !== 'admin') return;
+
+      const tbody = document.getElementById('branchesManageTableBody');
+      tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-4"><i class="fa-solid fa-spinner fa-spin me-2"></i>กำลังโหลดข้อมูลสาขา...</td></tr>`;
+
+      try {
+        const res = await callApi('getBranchesForAdmin', { adminEmail: currentUser.email });
+        if (!res || !res.success) {
+          tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger py-3">${(res && res.message) || 'โหลดข้อมูลสาขาล้มเหลว'}</td></tr>`;
+          return;
+        }
+
+        branches = res.branches || [];
+        populateBranchSelectDropdowns();
+        renderBranchesManageTable(branches);
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger py-3">${err.message}</td></tr>`;
+      }
+    }
+
+    function renderBranchesManageTable(branchList) {
+      const tbody = document.getElementById('branchesManageTableBody');
+      if (!branchList || branchList.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-3">ยังไม่มีข้อมูลสาขาในระบบ</td></tr>`;
+        return;
+      }
+
+      let html = '';
+      branchList.forEach(b => {
+        const safeName = (b.branchName || '').replace(/'/g, "\\'");
+        const mapUrl = `https://www.google.com/maps?q=${b.lat},${b.lng}`;
+        html += `
+          <tr class="text-center">
+            <td><span class="badge bg-secondary">${b.branchId}</span></td>
+            <td class="text-start fw-bold text-dark">${b.branchName}</td>
+            <td>
+              <a href="${mapUrl}" target="_blank" class="text-decoration-none small">
+                <i class="fa-solid fa-location-dot text-danger me-1"></i>${Number(b.lat).toFixed(6)}, ${Number(b.lng).toFixed(6)}
+              </a>
+            </td>
+            <td>${b.radius} ม.</td>
+            <td><span class="badge bg-success-subtle text-success border border-success-subtle">${b.workStart} น.</span></td>
+            <td><span class="badge bg-danger-subtle text-danger border border-danger-subtle">${b.workEnd} น.</span></td>
+            <td>
+              <button class="btn btn-outline-primary btn-sm py-0 px-2 me-1" onclick="editBranchRow('${b.branchId}', '${safeName}', ${b.lat}, ${b.lng}, ${b.radius}, '${b.workStart}', '${b.workEnd}')">
+                <i class="fa-solid fa-pen-to-square"></i> แก้ไข
+              </button>
+              <button class="btn btn-outline-danger btn-sm py-0 px-2" onclick="confirmDeleteBranch('${b.branchId}', '${safeName}')">
+                <i class="fa-solid fa-trash"></i> ลบ
+              </button>
+            </td>
+          </tr>
+        `;
+      });
+      tbody.innerHTML = html;
+    }
+
+    function fillBranchCurrentGps() {
+      if (currentPosition) {
+        document.getElementById('formBranchLat').value = currentPosition.lat.toFixed(6);
+        document.getElementById('formBranchLng').value = currentPosition.lng.toFixed(6);
+        Swal.fire({
+          icon: 'success',
+          title: 'ดึงพิกัดสำเร็จ',
+          text: `ละติจูด: ${currentPosition.lat.toFixed(6)}, ลองจิจูด: ${currentPosition.lng.toFixed(6)}`,
+          timer: 1800,
+          showConfirmButton: false
+        });
+      } else {
+        Swal.fire('ยังไม่พบพิกัด GPS', 'กรุณาอนุญาตสิทธิ์การเข้าถึงตำแหน่งที่ตั้งในเบราว์เซอร์ก่อน', 'warning');
+      }
+    }
+
+    function editBranchRow(branchId, branchName, lat, lng, radius, workStart, workEnd) {
+      document.getElementById('branchFormTitle').innerHTML = `<i class="fa-solid fa-pen-to-square text-warning me-2"></i>แก้ไขข้อมูลสาขา: ${branchName} (${branchId})`;
+      document.getElementById('formBranchId').value = branchId;
+      document.getElementById('formBranchName').value = branchName;
+      document.getElementById('formBranchLat').value = lat;
+      document.getElementById('formBranchLng').value = lng;
+      document.getElementById('formBranchRadius').value = radius;
+      document.getElementById('formWorkStart').value = workStart;
+      document.getElementById('formWorkEnd').value = workEnd;
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function resetBranchForm() {
+      document.getElementById('branchFormTitle').innerHTML = `<i class="fa-solid fa-building-circle-plus text-primary me-2"></i>เพิ่มสาขาใหม่ / ตั้งค่าเวลาเข้า-ออกงาน`;
+      document.getElementById('formBranchId').value = '';
+      document.getElementById('formBranchName').value = '';
+      document.getElementById('formBranchLat').value = '';
+      document.getElementById('formBranchLng').value = '';
+      document.getElementById('formBranchRadius').value = '200';
+      document.getElementById('formWorkStart').value = '08:30';
+      document.getElementById('formWorkEnd').value = '17:30';
+    }
+
+    async function submitBranchForm() {
+      const branchId = document.getElementById('formBranchId').value.trim();
+      const branchName = document.getElementById('formBranchName').value.trim();
+      const lat = document.getElementById('formBranchLat').value.trim();
+      const lng = document.getElementById('formBranchLng').value.trim();
+      const radius = document.getElementById('formBranchRadius').value.trim();
+      const workStart = document.getElementById('formWorkStart').value.trim();
+      const workEnd = document.getElementById('formWorkEnd').value.trim();
+
+      if (!branchName || !lat || !lng || !workStart || !workEnd) {
+        Swal.fire('ข้อมูลไม่ครบถ้วน', 'กรุณากรอกชื่อสาขา พิกัดละติจูด ลองจิจูด และเวลาเข้า-ออกงานให้ครบถ้วน', 'warning');
+        return;
+      }
+
+      Swal.fire({
+        title: 'กำลังบันทึกข้อมูลสาขา...',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+      });
+
+      try {
+        const res = await callApi('saveBranch', {
+          adminEmail: currentUser.email,
+          branchId: branchId,
+          branchName: branchName,
+          lat: Number(lat),
+          lng: Number(lng),
+          radius: Number(radius) || 200,
+          workStart: workStart,
+          workEnd: workEnd
+        });
+
+        if (res.success) {
+          Swal.fire({
+            icon: 'success',
+            title: 'บันทึกสำเร็จ',
+            text: res.message,
+            timer: 2000,
+            showConfirmButton: false
+          });
+          resetBranchForm();
+          loadBranchesManagement();
+        } else {
+          Swal.fire('เกิดข้อผิดพลาด', res.message, 'error');
+        }
+      } catch (err) {
+        Swal.fire('เกิดข้อผิดพลาด', err.message, 'error');
+      }
+    }
+
+    async function confirmDeleteBranch(branchId, branchName) {
+      const confirm = await Swal.fire({
+        title: `ลบสาขา ${branchName}?`,
+        text: `คุณต้องการลบสาขา ${branchName} (${branchId}) ออกจากระบบใช่หรือไม่?`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#dc3545',
+        confirmButtonText: 'ใช่, ลบสาขา',
+        cancelButtonText: 'ยกเลิก'
+      });
+
+      if (!confirm.isConfirmed) return;
+
+      Swal.fire({
+        title: 'กำลังลบสาขา...',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+      });
+
+      try {
+        const res = await callApi('deleteBranch', {
+          adminEmail: currentUser.email,
+          branchId: branchId
+        });
+
+        if (res.success) {
+          Swal.fire({
+            icon: 'success',
+            title: 'ลบเรียบร้อย',
+            text: res.message,
+            timer: 1800,
+            showConfirmButton: false
+          });
+          loadBranchesManagement();
+        } else {
+          Swal.fire('เกิดข้อผิดพลาด', res.message, 'error');
+        }
+      } catch (err) {
+        Swal.fire('เกิดข้อผิดพลาด', err.message, 'error');
+      }
+    }
+
+    // ==========================================
+    // ระบบอนุมัติผู้ใช้งาน จัดการสิทธิ์ และตั้งค่าโอทีต่อชั่วโมง
+    // ==========================================
     async function loadUsersManagement() {
       if (!currentUser || (currentUser.role || '').toLowerCase() !== 'admin') return;
 
       const pendingTbody = document.getElementById('pendingUsersTableBody');
       const allTbody = document.getElementById('allUsersManageTableBody');
 
-      pendingTbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-3"><i class="fa-solid fa-spinner fa-spin me-2"></i>กำลังโหลดรายการ...</td></tr>`;
-      allTbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-4"><i class="fa-solid fa-spinner fa-spin me-2"></i>กำลังโหลดรายชื่อพนักงานทั้งหมด...</td></tr>`;
+      pendingTbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted py-3"><i class="fa-solid fa-spinner fa-spin me-2"></i>กำลังโหลดรายการ...</td></tr>`;
+      allTbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted py-4"><i class="fa-solid fa-spinner fa-spin me-2"></i>กำลังโหลดรายชื่อพนักงานทั้งหมด...</td></tr>`;
 
       try {
         const res = await callApi('getAllUsersForAdmin', { adminEmail: currentUser.email });
         if (!res || !res.success) {
           const msg = (res && res.message) || 'ไม่สามารถโหลดข้อมูลผู้ใช้งานได้';
-          pendingTbody.innerHTML = `<tr><td colspan="5" class="text-center text-danger py-3">${msg}</td></tr>`;
-          allTbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger py-3">${msg}</td></tr>`;
+          pendingTbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger py-3">${msg}</td></tr>`;
+          allTbody.innerHTML = `<tr><td colspan="8" class="text-center text-danger py-3">${msg}</td></tr>`;
           return;
         }
 
         renderUsersManagementTables(res);
       } catch (err) {
-        pendingTbody.innerHTML = `<tr><td colspan="5" class="text-center text-danger py-3">${err.message}</td></tr>`;
-        allTbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger py-3">${err.message}</td></tr>`;
+        pendingTbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger py-3">${err.message}</td></tr>`;
+        allTbody.innerHTML = `<tr><td colspan="8" class="text-center text-danger py-3">${err.message}</td></tr>`;
+      }
+    }
+
+    function updatePreviewOtMin(userId) {
+      const hrInput = document.getElementById(`editOt_${userId}`);
+      const minSpan = document.getElementById(`previewOtMin_${userId}`);
+      if (hrInput && minSpan) {
+        const hrVal = Number(hrInput.value) || 0;
+        minSpan.innerText = (hrVal / 60).toFixed(2) + ' ฿/นาที';
       }
     }
 
@@ -929,7 +1248,6 @@
       const users = res.users || [];
       const pendingUsers = users.filter(u => u.status === 'INACTIVE');
 
-      // อัปเดต Badge แจ้งเตือน
       const badge = document.getElementById('pendingBadgeCount');
       if (pendingUsers.length > 0) {
         badge.innerText = pendingUsers.length;
@@ -941,10 +1259,10 @@
       document.getElementById('totalActiveUsersBadge').innerText = `ACTIVE: ${res.activeCount || 0}`;
       document.getElementById('totalPendingUsersBadge').innerText = `INACTIVE (รออนุมัติ): ${res.pendingCount || 0}`;
 
-      // 1. ตารางรายการรออนุมัติ (INACTIVE)
+      // 1. ตารางรายการรออนุมัติ (INACTIVE) พร้อมช่องตั้งค่าโอทีต่อชั่วโมงก่อนกดอนุมัติ
       const pendingTbody = document.getElementById('pendingUsersTableBody');
       if (pendingUsers.length === 0) {
-        pendingTbody.innerHTML = `<tr><td colspan="5" class="text-center text-success py-3"><i class="fa-solid fa-circle-check me-1"></i>ไม่มีรายการค้างอนุมัติในขณะนี้</td></tr>`;
+        pendingTbody.innerHTML = `<tr><td colspan="6" class="text-center text-success py-3"><i class="fa-solid fa-circle-check me-1"></i>ไม่มีรายการค้างอนุมัติในขณะนี้</td></tr>`;
       } else {
         let pHtml = '';
         pendingUsers.forEach(u => {
@@ -957,6 +1275,12 @@
               </td>
               <td class="text-start">${u.email}</td>
               <td><span class="badge bg-light text-dark border">${u.branchName}</span></td>
+              <td>
+                <div class="input-group input-group-sm mx-auto" style="width: 130px;">
+                  <input type="number" id="pendingOt_${u.userId}" class="form-control text-center" value="${u.otRatePerHour || 0}" min="0" step="0.01">
+                  <span class="input-group-text">฿/ชม.</span>
+                </div>
+              </td>
               <td><span class="badge bg-warning text-dark">INACTIVE (รออนุมัติ)</span></td>
               <td>
                 <button class="btn btn-success btn-sm fw-bold px-3 shadow-sm" onclick="quickApproveUser('${u.userId}', '${safeName}')">
@@ -969,10 +1293,10 @@
         pendingTbody.innerHTML = pHtml;
       }
 
-      // 2. ตารางจัดการสิทธิ์พนักงานทั้งหมด
+      // 2. ตารางจัดการสิทธิ์และตั้งค่าโอทีต่อชั่วโมงของพนักงานทั้งหมด
       const allTbody = document.getElementById('allUsersManageTableBody');
       if (users.length === 0) {
-        allTbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-3">ไม่พบข้อมูลพนักงาน</td></tr>`;
+        allTbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted py-3">ไม่พบข้อมูลพนักงาน</td></tr>`;
         return;
       }
 
@@ -985,10 +1309,12 @@
           branchOptions += `<option value="${b.branchId}" ${selected}>${b.branchName}</option>`;
         });
 
+        const otMinFormatted = Number(u.otRatePerMinute || (u.otRatePerHour || 0) / 60).toFixed(2);
+
         aHtml += `
           <tr class="text-center">
             <td class="text-start">
-              <div class="fw-bold text-dark">${u.name}</div>
+              <input type="text" id="editName_${u.userId}" class="form-control form-control-sm fw-bold text-dark mb-1" value="${u.name}" style="min-width: 140px;">
               <small class="text-muted">${u.userId}</small>
             </td>
             <td class="text-start small">${u.email}</td>
@@ -1010,7 +1336,13 @@
               </select>
             </td>
             <td>
-              <input type="number" id="editOt_${u.userId}" class="form-control form-control-sm text-center" style="width: 95px; margin: 0 auto;" value="${u.otRatePerHour || 0}" min="0" step="0.01">
+              <div class="input-group input-group-sm mx-auto" style="width: 125px;">
+                <input type="number" id="editOt_${u.userId}" class="form-control text-center fw-bold text-primary" value="${u.otRatePerHour || 0}" min="0" step="0.01" oninput="updatePreviewOtMin('${u.userId}')">
+                <span class="input-group-text">฿</span>
+              </div>
+            </td>
+            <td>
+              <span id="previewOtMin_${u.userId}" class="badge bg-light text-secondary border">${otMinFormatted} ฿/นาที</span>
             </td>
             <td>
               <button class="btn btn-primary btn-sm px-3 fw-bold" onclick="saveUserPermissionRow('${u.userId}', '${safeName}')">
@@ -1023,11 +1355,13 @@
       allTbody.innerHTML = aHtml;
     }
 
-    // กดปุ่มอนุมัติด่วน (เปลี่ยน INACTIVE -> ACTIVE ทันที)
     async function quickApproveUser(targetUserId, targetName) {
+      const otInput = document.getElementById(`pendingOt_${targetUserId}`);
+      const otRatePerHour = otInput ? (Number(otInput.value) || 0) : 0;
+
       const confirm = await Swal.fire({
         title: `อนุมัติผู้ใช้งาน?`,
-        text: `ต้องการอนุมัติให้ "${targetName}" (${targetUserId}) มีสถานะ ACTIVE เพื่อเข้าใช้งานระบบใช่หรือไม่?`,
+        text: `ต้องการอนุมัติให้ "${targetName}" (${targetUserId}) มีสถานะ ACTIVE (ค่าโอที ${otRatePerHour} บาท/ชม.) ใช่หรือไม่?`,
         icon: 'question',
         showCancelButton: true,
         confirmButtonColor: '#198754',
@@ -1047,7 +1381,8 @@
         const res = await callApi('updateUserPermission', {
           adminEmail: currentUser.email,
           targetUserId: targetUserId,
-          status: 'ACTIVE'
+          status: 'ACTIVE',
+          otRatePerHour: otRatePerHour
         });
 
         if (res.success) {
@@ -1067,15 +1402,15 @@
       }
     }
 
-    // บันทึกการตั้งค่าสิทธิ์ (Role, Status, Branch, OT Rate) จากตารางจัดการสิทธิ์
     async function saveUserPermissionRow(targetUserId, targetName) {
+      const nameVal = document.getElementById(`editName_${targetUserId}`).value.trim() || targetName;
       const branchId = document.getElementById(`editBranch_${targetUserId}`).value;
       const role = document.getElementById(`editRole_${targetUserId}`).value;
       const status = document.getElementById(`editStatus_${targetUserId}`).value;
       const otRatePerHour = Number(document.getElementById(`editOt_${targetUserId}`).value) || 0;
 
       Swal.fire({
-        title: 'กำลังบันทึกสิทธิ์...',
+        title: 'กำลังบันทึกข้อมูล...',
         allowOutsideClick: false,
         didOpen: () => Swal.showLoading()
       });
@@ -1084,6 +1419,7 @@
         const res = await callApi('updateUserPermission', {
           adminEmail: currentUser.email,
           targetUserId: targetUserId,
+          name: nameVal,
           branchId: branchId,
           role: role,
           status: status,
@@ -1107,7 +1443,9 @@
       }
     }
 
-    // โหลดข้อมูลแดชบอร์ดสรุปรายเดือนสำหรับ Admin
+    // ==========================================
+    // ระบบแดชบอร์ดสรุปรายเดือน + ส่งออกไฟล์ Excel (.xlsx)
+    // ==========================================
     async function loadAdminDashboard() {
       if (!currentUser || (currentUser.role || '').toLowerCase() !== 'admin') {
         return;
@@ -1128,6 +1466,7 @@
           return;
         }
 
+        lastDashboardResponse = res;
         renderAdminDashboardData(res);
       } catch (err) {
         tbody.innerHTML = `<tr><td colspan="11" class="text-center text-danger py-3">เกิดข้อผิดพลาด: ${err.message}</td></tr>`;
@@ -1195,6 +1534,88 @@
       });
 
       tbody.innerHTML = html;
+    }
+
+    // ส่งออกข้อมูลสรุปรายเดือนเป็นไฟล์ Excel (.xlsx)
+    function exportDashboardToExcel() {
+      if (!lastDashboardResponse || !lastDashboardResponse.staffSummary || lastDashboardResponse.staffSummary.length === 0) {
+        Swal.fire('ยังไม่มีข้อมูลสำหรับส่งออก', 'กรุณารอให้ระบบคำนวณข้อมูลสรุปรายเดือนเสร็จก่อน', 'warning');
+        return;
+      }
+
+      const monthStr = lastDashboardResponse.monthStr || document.getElementById('dashboardMonthPicker').value;
+      const rows = lastDashboardResponse.staffSummary;
+      const totals = lastDashboardResponse.totals || {};
+
+      const excelData = rows.map((st, idx) => ({
+        'ลำดับ': idx + 1,
+        'รหัสพนักงาน': st.userId,
+        'ชื่อ-นามสกุล': st.name,
+        'อีเมล': st.email || '',
+        'สิทธิ์การใช้งาน': (st.role || '').toUpperCase(),
+        'สถานะ': st.status || 'ACTIVE',
+        'สาขา': st.branchName,
+        'มาทำงาน (วัน)': st.presentDays,
+        'ลางาน (วัน)': st.leaveDays,
+        'ขาดงาน (วัน)': st.absentDays,
+        'เข้าสาย (ครั้ง)': st.lateCount,
+        'รวมเวลาเข้าสาย (นาที)': st.lateMinutes,
+        'ออกก่อนเวลา (ครั้ง)': st.earlyLeaveCount || 0,
+        'รวมเวลาออกก่อน (นาที)': st.earlyLeaveMinutes || 0,
+        'ค่าโอทีต่อชั่วโมง (บาท)': Number(st.otRatePerHour || 0),
+        'ค่าโอทีต่อนาที (บาท)': Number(Number(st.otRatePerMinute || 0).toFixed(4)),
+        'รวมเวลาโอที (นาที)': st.otMinutes,
+        'รวมเวลาโอที (ชม./นาที)': st.otHoursText,
+        'รวมเงินค่าโอที (บาท)': Number(st.otPayBaht || 0)
+      }));
+
+      // เพิ่มแถวสรุปผลรวมท้ายตาราง
+      excelData.push({
+        'ลำดับ': '',
+        'รหัสพนักงาน': 'รวมทั้งหมด',
+        'ชื่อ-นามสกุล': `${rows.length} คน`,
+        'อีเมล': '',
+        'สิทธิ์การใช้งาน': '',
+        'สถานะ': '',
+        'สาขา': `วันทำการ ${totals.workingDaysElapsed || 0}/${totals.totalWorkingDaysInMonth || 0} วัน`,
+        'มาทำงาน (วัน)': totals.presentDays || 0,
+        'ลางาน (วัน)': totals.leaveDays || 0,
+        'ขาดงาน (วัน)': totals.absentDays || 0,
+        'เข้าสาย (ครั้ง)': totals.lateCount || 0,
+        'รวมเวลาเข้าสาย (นาที)': totals.lateMinutes || 0,
+        'ออกก่อนเวลา (ครั้ง)': '',
+        'รวมเวลาออกก่อน (นาที)': '',
+        'ค่าโอทีต่อชั่วโมง (บาท)': '',
+        'ค่าโอทีต่อนาที (บาท)': '',
+        'รวมเวลาโอที (นาที)': totals.otMinutes || 0,
+        'รวมเวลาโอที (ชม./นาที)': totals.otHoursText || '',
+        'รวมเงินค่าโอที (บาท)': Number(totals.otPayBaht || 0)
+      });
+
+      if (typeof XLSX !== 'undefined') {
+        const ws = XLSX.utils.json_to_sheet(excelData);
+        ws['!cols'] = [
+          { wch: 7 }, { wch: 13 }, { wch: 24 }, { wch: 26 }, { wch: 14 },
+          { wch: 12 }, { wch: 24 }, { wch: 15 }, { wch: 14 }, { wch: 14 },
+          { wch: 15 }, { wch: 20 }, { wch: 17 }, { wch: 20 }, { wch: 22 },
+          { wch: 20 }, { wch: 18 }, { wch: 20 }, { wch: 20 }
+        ];
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, `สรุป_${monthStr}`);
+        XLSX.writeFile(wb, `สรุปเวลาทำงานและค่าโอที_${monthStr}.xlsx`);
+      } else {
+        // Fallback กรณีโหลดไลบรารีไม่สำเร็จ ส่งออกเป็น CSV รองรับภาษาไทย (UTF-8 BOM)
+        const headers = Object.keys(excelData[0]);
+        const csvRows = [
+          headers.join(','),
+          ...excelData.map(row => headers.map(h => `"${String(row[h] ?? '').replace(/"/g, '""')}"`).join(','))
+        ];
+        const blob = new Blob(['\uFEFF' + csvRows.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `สรุปเวลาทำงานและค่าโอที_${monthStr}.csv`;
+        link.click();
+      }
     }
 
     // แก้ไขค่าโอทีต่อชั่วโมงของพนักงาน
