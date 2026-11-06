@@ -33,41 +33,7 @@ function doPost(e) {
   try {
     var contents = e.postData ? e.postData.contents : "{}";
     var req = JSON.parse(contents);
-    var action = req.action;
-    var result = { success: false, message: "Action not recognized" };
-
-    if (action === "getInitialData") {
-      result = getInitialData(req.email || "");
-      result.success = true;
-    } else if (action === "recordAttendance") {
-      result = recordAttendance(req);
-    } else if (action === "getRecentLogs") {
-      var logs = getRecentLogs(req.userId || "");
-      result = { success: true, logs: logs };
-    } else if (action === "registerUser") {
-      result = registerUser(req);
-    } else if (action === "submitLeave") {
-      result = submitLeaveRequest(req);
-    } else if (action === "getAdminDashboard") {
-      result = getAdminMonthlySummary(req.monthStr || "", req.adminEmail || "");
-    } else if (action === "updateUserOtRate") {
-      result = updateUserOtRate(req);
-    } else if (action === "getAllUsersForAdmin") {
-      result = getAllUsersForAdmin(req.adminEmail || "");
-    } else if (action === "updateUserPermission") {
-      result = updateUserPermission(req);
-    } else if (action === "getBranchesForAdmin") {
-      result = getBranchesForAdmin(req.adminEmail || "");
-    } else if (action === "saveBranch") {
-      result = saveBranch(req);
-    } else if (action === "deleteBranch") {
-      result = deleteBranch(req);
-    } else if (action === "getUserDailySummary") {
-      result = getUserDailySummary(req.userId || "", req.monthStr || "");
-    } else if (action === "getAdminDailySummary") {
-      result = getAdminDailySummary(req.dateStr || "", req.adminEmail || "", req.branchId || "");
-    }
-
+    var result = handleApiRequest_(req);
     return ContentService.createTextOutput(JSON.stringify(result))
       .setMimeType(ContentService.MimeType.JSON);
   } catch (err) {
@@ -76,13 +42,387 @@ function doPost(e) {
   }
 }
 
+// 2.1 จุดเรียก API สำหรับหน้าเว็บที่เปิดผ่าน Apps Script โดยตรง (google.script.run)
+// แปลงชื่อฟังก์ชันเดิม + อาร์กิวเมนต์ตามตำแหน่ง ให้เป็นคำขอแบบเดียวกับ doPost แล้วตรวจสอบเซสชันทุกครั้ง
+function apiCall(token, fnName, args) {
+  args = args || [];
+  var a0 = (args[0] && typeof args[0] === "object") ? args[0] : {};
+  var req = {};
+  for (var k in a0) req[k] = a0[k];
+  req.token = token || "";
+
+  var actionMap = {
+    getPublicConfig: "getPublicConfig",
+    loginWithPassword: "loginWithPassword",
+    loginWithGmail: "loginWithGmail",
+    registerUser: "registerUser",
+    logout: "logout",
+    changePassword: "changePassword",
+    adminSetPassword: "adminSetPassword",
+    getInitialData: "getInitialData",
+    recordAttendance: "recordAttendance",
+    getRecentLogs: "getRecentLogs",
+    submitLeaveRequest: "submitLeave",
+    getAdminMonthlySummary: "getAdminDashboard",
+    updateUserOtRate: "updateUserOtRate",
+    getAllUsersForAdmin: "getAllUsersForAdmin",
+    updateUserPermission: "updateUserPermission",
+    getBranchesForAdmin: "getBranchesForAdmin",
+    saveBranch: "saveBranch",
+    deleteBranch: "deleteBranch",
+    getUserDailySummary: "getUserDailySummary",
+    getAdminDailySummary: "getAdminDailySummary"
+  };
+  req.action = actionMap[fnName] || fnName;
+
+  // อาร์กิวเมนต์แบบตำแหน่งของฟังก์ชันเดิม
+  if (fnName === "getAdminMonthlySummary") req.monthStr = args[0] || "";
+  if (fnName === "getUserDailySummary") req.monthStr = args[1] || "";
+  if (fnName === "getAdminDailySummary") {
+    req.dateStr = args[0] || "";
+    req.filterBranchId = args[2] || "ALL";
+  }
+
+  var res = handleApiRequest_(req);
+  if (fnName === "getRecentLogs") {
+    return (res && res.logs) ? res.logs : [];
+  }
+  return res;
+}
+
+// 2.2 ตัวกลางจัดการคำขอ API ทั้งหมด (ตรวจสอบเซสชัน/รหัสผ่านก่อนเข้าถึงข้อมูล)
+function handleApiRequest_(req) {
+  req = req || {};
+  var action = req.action;
+  var publicActions = { getPublicConfig: true, loginWithPassword: true, loginWithGmail: true, registerUser: true, logout: true };
+
+  if (action === "getPublicConfig") {
+    var pub = getInitialData_("");
+    return { success: true, branches: pub.branches };
+  }
+  if (action === "loginWithPassword") {
+    return loginWithPassword_(req.email, req.password, req.setupPassword === true);
+  }
+  if (action === "loginWithGmail") {
+    return loginWithGmail_(req.email, req.googleToken);
+  }
+  if (action === "registerUser") {
+    return registerUser_(req);
+  }
+  if (action === "logout") {
+    destroySession_(req.token);
+    return { success: true };
+  }
+
+  var me = publicActions[action] ? null : resolveSessionUser_(req.token);
+  if (!me) {
+    return { success: false, authRequired: true, message: "เซสชันหมดอายุหรือยังไม่ได้เข้าสู่ระบบ กรุณาเข้าสู่ระบบใหม่" };
+  }
+
+  switch (action) {
+    case "getInitialData":
+      var init = getInitialData_(me.email);
+      init.success = true;
+      return init;
+    case "changePassword":
+      return changePassword_(me, req.oldPassword, req.newPassword);
+    case "adminSetPassword":
+      return adminSetPassword_(me.email, req.targetUserId, req.newPassword);
+    case "recordAttendance":
+      req.userId = me.userId;
+      req.branchId = me.branchId;
+      return recordAttendance_(req);
+    case "getRecentLogs":
+      return { success: true, logs: getRecentLogs_(me.userId) };
+    case "submitLeave":
+      req.userId = me.userId;
+      return submitLeaveRequest_(req);
+    case "getAdminDashboard":
+      return getAdminMonthlySummary_(req.monthStr || "", me.email);
+    case "updateUserOtRate":
+      req.adminEmail = me.email;
+      return updateUserOtRate_(req);
+    case "getAllUsersForAdmin":
+      return getAllUsersForAdmin_(me.email);
+    case "updateUserPermission":
+      req.adminEmail = me.email;
+      return updateUserPermission_(req);
+    case "getBranchesForAdmin":
+      return getBranchesForAdmin_(me.email);
+    case "saveBranch":
+      req.adminEmail = me.email;
+      return saveBranch_(req);
+    case "deleteBranch":
+      req.adminEmail = me.email;
+      return deleteBranch_(req);
+    case "getUserDailySummary":
+      return getUserDailySummary_(me.userId, req.monthStr || "");
+    case "getAdminDailySummary":
+      return getAdminDailySummary_(req.dateStr || "", me.email, req.filterBranchId || req.branchId || "ALL");
+  }
+  return { success: false, message: "Action not recognized" };
+}
+
+// ==========================================
+// ระบบรหัสผ่านและเซสชันการเข้าสู่ระบบ
+// ==========================================
+var SESSION_TTL_MS_ = 30 * 24 * 60 * 60 * 1000; // จำการเข้าสู่ระบบ 30 วัน
+var PASSWORD_COL_ = 9;                            // คอลัมน์ I ในชีต Users เก็บรหัสผ่านแบบเข้ารหัส (salt$hash)
+var MIN_PASSWORD_LEN_ = 6;
+
+function hashPassword_(password, salt) {
+  var h = salt + "::" + password;
+  for (var i = 0; i < 200; i++) {
+    var bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, h, Utilities.Charset.UTF_8);
+    h = bytes.map(function(b) { return ("0" + (b & 0xff).toString(16)).slice(-2); }).join("");
+  }
+  return h;
+}
+
+function makePasswordRecord_(password) {
+  var salt = Utilities.getUuid().replace(/-/g, "");
+  return salt + "$" + hashPassword_(password, salt);
+}
+
+function verifyPasswordRecord_(password, record) {
+  var parts = (record || "").toString().split("$");
+  if (parts.length !== 2 || !parts[0] || !parts[1]) return false;
+  return hashPassword_(password, parts[0]) === parts[1];
+}
+
+function createSession_(userId) {
+  var props = PropertiesService.getScriptProperties();
+  cleanupSessions_(props);
+  var token = Utilities.getUuid().replace(/-/g, "") + Utilities.getUuid().replace(/-/g, "");
+  props.setProperty("sess_" + token, JSON.stringify({ uid: userId, exp: Date.now() + SESSION_TTL_MS_ }));
+  return token;
+}
+
+function destroySession_(token) {
+  if (!token) return;
+  PropertiesService.getScriptProperties().deleteProperty("sess_" + token);
+}
+
+function cleanupSessions_(props) {
+  var all = props.getProperties();
+  var now = Date.now();
+  for (var key in all) {
+    if (key.indexOf("sess_") !== 0) continue;
+    try {
+      var s = JSON.parse(all[key]);
+      if (!s || !s.exp || s.exp < now) props.deleteProperty(key);
+    } catch (e) {
+      props.deleteProperty(key);
+    }
+  }
+}
+
+// ตรวจสอบโทเคนและดึงข้อมูลผู้ใช้ปัจจุบันจากชีต Users (ข้อมูลสิทธิ์/สถานะล่าสุดเสมอ)
+function resolveSessionUser_(token) {
+  if (!token) return null;
+  var props = PropertiesService.getScriptProperties();
+  var raw = props.getProperty("sess_" + token);
+  if (!raw) return null;
+  var sess;
+  try { sess = JSON.parse(raw); } catch (e) { return null; }
+  if (!sess || !sess.exp || sess.exp < Date.now()) {
+    props.deleteProperty("sess_" + token);
+    return null;
+  }
+  var users = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Users").getDataRange().getValues();
+  for (var i = 1; i < users.length; i++) {
+    if (users[i][0] === sess.uid) {
+      return {
+        userId: users[i][0],
+        email: (users[i][4] || "").toString().trim(),
+        role: (users[i][2] || "user").toString().trim().toLowerCase(),
+        branchId: (users[i][3] || "").toString().trim(),
+        status: (users[i][5] || "INACTIVE").toString().trim().toUpperCase()
+      };
+    }
+  }
+  return null;
+}
+
+// ป้องกันการเดารหัสผ่าน: ล็อก 10 นาทีเมื่อกรอกผิดเกิน 5 ครั้ง
+function isLoginLocked_(email) {
+  var c = CacheService.getScriptCache().get("loginfail_" + email);
+  return c && Number(c) >= 5;
+}
+function registerLoginFailure_(email) {
+  var cache = CacheService.getScriptCache();
+  var c = Number(cache.get("loginfail_" + email) || 0) + 1;
+  cache.put("loginfail_" + email, String(c), 600);
+}
+
+function loginWithPassword_(email, password, setupPassword) {
+  try {
+    var cleanEmail = (email || "").toString().trim().toLowerCase();
+    password = (password || "").toString();
+    if (!cleanEmail || !password) {
+      return { success: false, message: "กรุณากรอกอีเมลและรหัสผ่าน" };
+    }
+    if (isLoginLocked_(cleanEmail)) {
+      return { success: false, message: "กรอกรหัสผ่านผิดหลายครั้งเกินไป กรุณารอ 10 นาทีแล้วลองใหม่" };
+    }
+
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName("Users");
+    ensureUserHeaders_(sheet);
+    var users = sheet.getDataRange().getValues();
+
+    var rowIdx = -1;
+    for (var i = 1; i < users.length; i++) {
+      if ((users[i][4] || "").toString().trim().toLowerCase() === cleanEmail) { rowIdx = i; break; }
+    }
+    if (rowIdx < 0) {
+      return { success: false, notRegistered: true, message: "ไม่พบอีเมลนี้ในระบบ กรุณาลงทะเบียนพนักงานใหม่" };
+    }
+
+    var record = (users[rowIdx][PASSWORD_COL_ - 1] || "").toString().trim();
+    if (!record) {
+      // บัญชีเดิมที่ยังไม่เคยตั้งรหัสผ่าน: ให้ตั้งรหัสผ่านครั้งแรก
+      if (!setupPassword) {
+        return { success: false, needPasswordSetup: true, message: "บัญชีนี้ยังไม่ได้ตั้งรหัสผ่าน กรุณาตั้งรหัสผ่านใหม่สำหรับเข้าสู่ระบบ" };
+      }
+      if (password.length < MIN_PASSWORD_LEN_) {
+        return { success: false, message: "รหัสผ่านต้องมีอย่างน้อย " + MIN_PASSWORD_LEN_ + " ตัวอักษร" };
+      }
+      sheet.getRange(rowIdx + 1, PASSWORD_COL_).setValue(makePasswordRecord_(password));
+    } else if (!verifyPasswordRecord_(password, record)) {
+      registerLoginFailure_(cleanEmail);
+      return { success: false, message: "อีเมลหรือรหัสผ่านไม่ถูกต้อง" };
+    }
+
+    CacheService.getScriptCache().remove("loginfail_" + cleanEmail);
+    var token = createSession_(users[rowIdx][0]);
+    var init = getInitialData_(cleanEmail);
+    return { success: true, token: token, user: init.user, branches: init.branches };
+  } catch (err) {
+    return { success: false, message: "เข้าสู่ระบบล้มเหลว: " + err.toString() };
+  }
+}
+
+function changePassword_(me, oldPassword, newPassword) {
+  newPassword = (newPassword || "").toString();
+  if (newPassword.length < MIN_PASSWORD_LEN_) {
+    return { success: false, message: "รหัสผ่านใหม่ต้องมีอย่างน้อย " + MIN_PASSWORD_LEN_ + " ตัวอักษร" };
+  }
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Users");
+  var users = sheet.getDataRange().getValues();
+  for (var i = 1; i < users.length; i++) {
+    if (users[i][0] === me.userId) {
+      var record = (users[i][PASSWORD_COL_ - 1] || "").toString().trim();
+      if (record && !verifyPasswordRecord_((oldPassword || "").toString(), record)) {
+        return { success: false, message: "รหัสผ่านเดิมไม่ถูกต้อง" };
+      }
+      sheet.getRange(i + 1, PASSWORD_COL_).setValue(makePasswordRecord_(newPassword));
+      return { success: true, message: "เปลี่ยนรหัสผ่านเรียบร้อยแล้ว" };
+    }
+  }
+  return { success: false, message: "ไม่พบข้อมูลผู้ใช้" };
+}
+
+function adminSetPassword_(adminEmail, targetUserId, newPassword) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Users");
+  var users = sheet.getDataRange().getValues();
+  if (!verifyAdminAccess_(users, adminEmail)) {
+    return { success: false, message: "ปฏิเสธการเข้าถึง: เฉพาะผู้ดูแลระบบ (Admin) เท่านั้น" };
+  }
+  newPassword = (newPassword || "").toString();
+  if (newPassword.length < MIN_PASSWORD_LEN_) {
+    return { success: false, message: "รหัสผ่านต้องมีอย่างน้อย " + MIN_PASSWORD_LEN_ + " ตัวอักษร" };
+  }
+  for (var i = 1; i < users.length; i++) {
+    if (users[i][0] === targetUserId) {
+      sheet.getRange(i + 1, PASSWORD_COL_).setValue(makePasswordRecord_(newPassword));
+      return { success: true, message: "ตั้งรหัสผ่านใหม่ให้ " + (users[i][1] || targetUserId) + " เรียบร้อยแล้ว" };
+    }
+  }
+  return { success: false, message: "ไม่พบพนักงานที่ต้องการ" };
+}
+
+function loginWithGmail_(email, googleToken) {
+  try {
+    var targetEmail = (email || "").toString().trim().toLowerCase();
+    var sessionEmail = "";
+    try {
+      sessionEmail = (Session.getActiveUser().getEmail() || "").toString().trim().toLowerCase();
+    } catch (e) {}
+
+    // 1. ถ้ารันอยู่บน Google Apps Script โดยตรง และมี session Gmail
+    if (sessionEmail) {
+      if (!targetEmail || targetEmail === sessionEmail) {
+        targetEmail = sessionEmail;
+      }
+    } else if (googleToken) {
+      // 2. ถ้าส่ง Google ID Token (JWT) จาก Google Identity Services มา
+      try {
+        var parts = googleToken.split('.');
+        if (parts.length >= 2) {
+          var payloadStr = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+          while (payloadStr.length % 4) payloadStr += '=';
+          var decoded = Utilities.newBlob(Utilities.base64Decode(payloadStr)).getDataAsString("UTF-8");
+          var jwt = JSON.parse(decoded);
+          if (jwt && jwt.email) {
+            targetEmail = jwt.email.toLowerCase();
+          }
+        }
+      } catch (e) {}
+    }
+
+    if (!targetEmail || targetEmail.indexOf("@") < 0) {
+      return { success: false, message: "ไม่สามารถระบุอีเมล Gmail ได้ กรุณากรอกอีเมลและรหัสผ่าน" };
+    }
+
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName("Users");
+    ensureUserHeaders_(sheet);
+    var users = sheet.getDataRange().getValues();
+
+    var rowIdx = -1;
+    for (var i = 1; i < users.length; i++) {
+      if ((users[i][4] || "").toString().trim().toLowerCase() === targetEmail) {
+        rowIdx = i;
+        break;
+      }
+    }
+
+    if (rowIdx < 0) {
+      return {
+        success: false,
+        notRegistered: true,
+        email: targetEmail,
+        message: "ไม่พบบัญชี " + targetEmail + " ในระบบ กรุณาลงทะเบียนพนักงานใหม่"
+      };
+    }
+
+    var token = createSession_(users[rowIdx][0]);
+    var init = getInitialData_(targetEmail);
+    return {
+      success: true,
+      token: token,
+      user: init.user,
+      branches: init.branches,
+      message: "เข้าสู่ระบบด้วย Gmail สำเร็จ"
+    };
+  } catch (err) {
+    return { success: false, message: "เกิดข้อผิดพลาดในการเข้าสู่ระบบผ่าน Gmail: " + err.toString() };
+  }
+}
+
+// ทำความสะอาดข้อมูลอุปกรณ์ที่ส่งมาจากหน้าเว็บ
+function sanitizeDeviceText_(val, maxLen) {
+  return (val || "").toString().replace(/[\r\n\t]/g, " ").substring(0, maxLen || 150);
+}
+
 // รวมไฟล์ย่อย
 function include(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
 
 // ตรวจสอบและสร้างหัวตาราง Users ให้รองรับคอลัมน์ ค่าโอทีต่อชั่วโมง และ โอทีต่อนาที (บาท)
-function ensureUserHeaders(sheet) {
+function ensureUserHeaders_(sheet) {
   if (!sheet) return;
   if (sheet.getLastRow() === 0) {
     sheet.appendRow([
@@ -97,6 +437,9 @@ function ensureUserHeaders(sheet) {
     }
     if (!headerRow[7] || headerRow[7].toString().trim() === "") {
       sheet.getRange(1, 8).setValue("โอทีต่อนาที (บาท)");
+    }
+    if (sheet.getLastColumn() < 9 || !sheet.getRange(1, 9).getValue()) {
+      sheet.getRange(1, 9).setValue("รหัสผ่าน (เข้ารหัส)");
     }
 
     var lastRow = sheet.getLastRow();
@@ -118,7 +461,7 @@ function ensureUserHeaders(sheet) {
 }
 
 // ตรวจสอบและสร้างหัวตาราง Branches
-function ensureBranchHeaders(sheet) {
+function ensureBranchHeaders_(sheet) {
   if (!sheet) return;
   if (sheet.getLastRow() === 0) {
     sheet.appendRow([
@@ -128,7 +471,7 @@ function ensureBranchHeaders(sheet) {
 }
 
 // แปลงค่าเวลาในชีต Branches (รองรับทั้ง Date object และ String "HH:mm")
-function formatSheetTime(val, defaultTime) {
+function formatSheetTime_(val, defaultTime) {
   if (!val && val !== 0) return defaultTime || "08:30";
   if (val instanceof Date) {
     return Utilities.formatDate(val, Session.getScriptTimeZone(), "HH:mm");
@@ -142,7 +485,7 @@ function formatSheetTime(val, defaultTime) {
 }
 
 // ตรวจสอบว่าอีเมลที่เรียกใช้งานเป็น Admin ที่ ACTIVE หรือไม่
-function verifyAdminAccess(usersData, adminEmail) {
+function verifyAdminAccess_(usersData, adminEmail) {
   var callerEmail = (adminEmail || Session.getActiveUser().getEmail() || "").toString().trim().toLowerCase();
   if (!callerEmail) return false;
   for (var i = 1; i < usersData.length; i++) {
@@ -157,15 +500,15 @@ function verifyAdminAccess(usersData, adminEmail) {
 }
 
 // 3. ดึงข้อมูลพนักงานและสาขาตาม Email
-function getInitialData(email) {
+function getInitialData_(email) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var userSheet = ss.getSheetByName("Users");
   var branchSheet = ss.getSheetByName("Branches");
   var logSheet = ss.getSheetByName("Logs");
   
-  ensureUserHeaders(userSheet);
-  ensureBranchHeaders(branchSheet);
-  ensureLogHeaders(logSheet);
+  ensureUserHeaders_(userSheet);
+  ensureBranchHeaders_(branchSheet);
+  ensureLogHeaders_(logSheet);
 
   var users = userSheet.getDataRange().getValues();
   var branches = branchSheet.getDataRange().getValues();
@@ -198,8 +541,8 @@ function getInitialData(email) {
         lat: Number(branches[j][2]) || 0,
         lng: Number(branches[j][3]) || 0,
         radius: Number(branches[j][4]) || 200,
-        workStart: formatSheetTime(branches[j][5], "08:30"),
-        workEnd: formatSheetTime(branches[j][6], "17:30")
+        workStart: formatSheetTime_(branches[j][5], "08:30"),
+        workEnd: formatSheetTime_(branches[j][6], "17:30")
       });
     }
   }
@@ -211,17 +554,25 @@ function getInitialData(email) {
 }
 
 // 4. ลงทะเบียนพนักงานใหม่ (กำหนด Status เริ่มต้นเป็น INACTIVE รอแอดมินอนุมัติ)
-function registerUser(data) {
+function registerUser_(data) {
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var sheet = ss.getSheetByName("Users");
-    ensureUserHeaders(sheet);
+    ensureUserHeaders_(sheet);
 
     var users = sheet.getDataRange().getValues();
     var cleanEmail = (data.email || "").toString().trim().toLowerCase();
+    var password = (data.password || "").toString();
+    var cleanName = (data.name || "").toString().trim();
+    if (!cleanEmail || cleanEmail.indexOf("@") < 0 || !cleanName) {
+      return { success: false, message: "กรุณากรอกอีเมลและชื่อ-นามสกุลให้ถูกต้อง" };
+    }
+    if (password.length < MIN_PASSWORD_LEN_) {
+      return { success: false, message: "รหัสผ่านต้องมีอย่างน้อย " + MIN_PASSWORD_LEN_ + " ตัวอักษร" };
+    }
     for (var i = 1; i < users.length; i++) {
       if ((users[i][4] || "").toString().trim().toLowerCase() === cleanEmail) {
-        return { success: false, message: "อีเมลนี้ถูกลงทะเบียนในระบบแล้ว" };
+        return { success: false, message: "อีเมลนี้ถูกลงทะเบียนในระบบแล้ว กรุณาเข้าสู่ระบบด้วยรหัสผ่าน" };
       }
     }
 
@@ -236,37 +587,39 @@ function registerUser(data) {
       }
     }
     var newId = "U" + ("000" + (maxNum + 1)).slice(-3);
-    var defaultOtHour = Number(data.otRatePerHour) || 0;
+    var defaultOtHour = 0; // ค่าโอทีกำหนดโดยแอดมินเท่านั้น
     
     sheet.appendRow([
       newId,
-      data.name,
+      cleanName,
       "user",
       data.branchId,
-      data.email,
+      cleanEmail,
       "INACTIVE", // สมัครใหม่เป็น INACTIVE จนกว่าแอดมินจะอนุมัติ
       defaultOtHour,
-      defaultOtHour / 60
+      defaultOtHour / 60,
+      makePasswordRecord_(password)
     ]);
     sheet.getRange(nextRow, 8).setFormula("=IF(ISNUMBER(G" + nextRow + "), G" + nextRow + "/60, 0)");
     
-    return { success: true, message: "ลงทะเบียนสำเร็จ บัญชีของคุณมีสถานะ INACTIVE กรุณารอผู้ดูแลระบบ (Admin) อนุมัติสิทธิ์เข้าใช้งาน" };
+    var token = createSession_(newId);
+    return { success: true, token: token, message: "ลงทะเบียนสำเร็จ บัญชีของคุณมีสถานะ INACTIVE กรุณารอผู้ดูแลระบบ (Admin) อนุมัติสิทธิ์เข้าใช้งาน" };
   } catch (error) {
     return { success: false, message: error.toString() };
   }
 }
 
 // ดึงข้อมูลสาขาทั้งหมดสำหรับหน้าจัดการสาขา (เฉพาะ Admin)
-function getBranchesForAdmin(adminEmail) {
+function getBranchesForAdmin_(adminEmail) {
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var userSheet = ss.getSheetByName("Users");
     var branchSheet = ss.getSheetByName("Branches");
-    ensureUserHeaders(userSheet);
-    ensureBranchHeaders(branchSheet);
+    ensureUserHeaders_(userSheet);
+    ensureBranchHeaders_(branchSheet);
 
     var users = userSheet.getDataRange().getValues();
-    if (!verifyAdminAccess(users, adminEmail)) {
+    if (!verifyAdminAccess_(users, adminEmail)) {
       return { success: false, message: "ปฏิเสธการเข้าถึง: เฉพาะผู้ดูแลระบบ (Admin) เท่านั้น" };
     }
 
@@ -280,8 +633,8 @@ function getBranchesForAdmin(adminEmail) {
           lat: Number(branches[j][2]) || 0,
           lng: Number(branches[j][3]) || 0,
           radius: Number(branches[j][4]) || 200,
-          workStart: formatSheetTime(branches[j][5], "08:30"),
-          workEnd: formatSheetTime(branches[j][6], "17:30")
+          workStart: formatSheetTime_(branches[j][5], "08:30"),
+          workEnd: formatSheetTime_(branches[j][6], "17:30")
         });
       }
     }
@@ -296,16 +649,16 @@ function getBranchesForAdmin(adminEmail) {
 }
 
 // เพิ่มหรือแก้ไขข้อมูลสาขา ตำแหน่งที่ตั้ง รัศมี เวลาเข้างาน-ออกงาน (เฉพาะ Admin)
-function saveBranch(req) {
+function saveBranch_(req) {
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var userSheet = ss.getSheetByName("Users");
     var branchSheet = ss.getSheetByName("Branches");
-    ensureUserHeaders(userSheet);
-    ensureBranchHeaders(branchSheet);
+    ensureUserHeaders_(userSheet);
+    ensureBranchHeaders_(branchSheet);
 
     var users = userSheet.getDataRange().getValues();
-    if (!verifyAdminAccess(users, req.adminEmail)) {
+    if (!verifyAdminAccess_(users, req.adminEmail)) {
       return { success: false, message: "ปฏิเสธการเข้าถึง: เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่จัดการสาขาได้" };
     }
 
@@ -313,8 +666,8 @@ function saveBranch(req) {
     var lat = Number(req.lat);
     var lng = Number(req.lng);
     var radius = Number(req.radius) || 200;
-    var workStart = formatSheetTime(req.workStart, "08:30");
-    var workEnd = formatSheetTime(req.workEnd, "17:30");
+    var workStart = formatSheetTime_(req.workStart, "08:30");
+    var workEnd = formatSheetTime_(req.workEnd, "17:30");
 
     if (!branchName) {
       return { success: false, message: "กรุณาระบุชื่อสาขา" };
@@ -383,14 +736,14 @@ function saveBranch(req) {
 }
 
 // ลบสาขา (เฉพาะ Admin)
-function deleteBranch(req) {
+function deleteBranch_(req) {
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var userSheet = ss.getSheetByName("Users");
     var branchSheet = ss.getSheetByName("Branches");
 
     var users = userSheet.getDataRange().getValues();
-    if (!verifyAdminAccess(users, req.adminEmail)) {
+    if (!verifyAdminAccess_(users, req.adminEmail)) {
       return { success: false, message: "ปฏิเสธการเข้าถึง: เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่ลบสาขาได้" };
     }
 
@@ -418,15 +771,15 @@ function deleteBranch(req) {
 }
 
 // ดึงรายชื่อพนักงานทั้งหมดสำหรับหน้าอนุมัติและจัดการสิทธิ์ (เฉพาะ Admin)
-function getAllUsersForAdmin(adminEmail) {
+function getAllUsersForAdmin_(adminEmail) {
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var userSheet = ss.getSheetByName("Users");
     var branchSheet = ss.getSheetByName("Branches");
-    ensureUserHeaders(userSheet);
+    ensureUserHeaders_(userSheet);
 
     var users = userSheet.getDataRange().getValues();
-    if (!verifyAdminAccess(users, adminEmail)) {
+    if (!verifyAdminAccess_(users, adminEmail)) {
       return { success: false, message: "ปฏิเสธการเข้าถึง: เฉพาะผู้ดูแลระบบ (Admin) เท่านั้น" };
     }
 
@@ -466,7 +819,8 @@ function getAllUsersForAdmin(adminEmail) {
         email: users[i][4] || "",
         status: status,
         otRatePerHour: Number(otHour.toFixed(2)),
-        otRatePerMinute: Number(otMin.toFixed(4))
+        otRatePerMinute: Number(otMin.toFixed(4)),
+        hasPassword: !!(users[i][PASSWORD_COL_ - 1] && users[i][PASSWORD_COL_ - 1].toString().trim())
       });
     }
 
@@ -483,14 +837,14 @@ function getAllUsersForAdmin(adminEmail) {
 }
 
 // อนุมัติผู้ใช้งาน / จัดการสิทธิ์ Role, Status, สาขา และค่าโอที (เฉพาะ Admin)
-function updateUserPermission(req) {
+function updateUserPermission_(req) {
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var userSheet = ss.getSheetByName("Users");
-    ensureUserHeaders(userSheet);
+    ensureUserHeaders_(userSheet);
 
     var users = userSheet.getDataRange().getValues();
-    if (!verifyAdminAccess(users, req.adminEmail)) {
+    if (!verifyAdminAccess_(users, req.adminEmail)) {
       return { success: false, message: "ปฏิเสธการเข้าถึง: เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่จัดการสิทธิ์ได้" };
     }
 
@@ -537,14 +891,14 @@ function updateUserPermission(req) {
 }
 
 // อัปเดตค่าโอทีต่อชั่วโมงของพนักงาน (เฉพาะ Admin)
-function updateUserOtRate(req) {
+function updateUserOtRate_(req) {
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var userSheet = ss.getSheetByName("Users");
-    ensureUserHeaders(userSheet);
+    ensureUserHeaders_(userSheet);
 
     var users = userSheet.getDataRange().getValues();
-    if (!verifyAdminAccess(users, req.adminEmail)) {
+    if (!verifyAdminAccess_(users, req.adminEmail)) {
       return { success: false, message: "ปฏิเสธการเข้าถึง: เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่แก้ไขค่าโอทีได้" };
     }
 
@@ -573,7 +927,7 @@ function updateUserOtRate(req) {
 }
 
 // 5. คำนวณระยะห่างพิกัด GPS
-function calculateDistance(lat1, lon1, lat2, lon2) {
+function calculateDistance_(lat1, lon1, lat2, lon2) {
   var R = 6371e3;
   var phi1 = lat1 * Math.PI / 180;
   var phi2 = lat2 * Math.PI / 180;
@@ -588,7 +942,7 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 }
 
 // 6. บันทึกรูปถ่ายลง Google Drive
-function saveImageToDrive(base64Data, userId) {
+function saveImageToDrive_(base64Data, userId) {
   try {
     var folderName = "Attendance_Photos";
     var folders = DriveApp.getFoldersByName(folderName);
@@ -608,15 +962,16 @@ function saveImageToDrive(base64Data, userId) {
 }
 
 // ตรวจสอบและสร้างหัวตาราง Logs ให้รองรับคอลัมน์ OT, ออกก่อน และ เข้าสาย (นาที)
-function ensureLogHeaders(sheet) {
+function ensureLogHeaders_(sheet) {
   if (!sheet) return;
   if (sheet.getLastRow() === 0) {
     sheet.appendRow([
       "Log ID", "User ID", "Timestamp", "Type", "Branch ID", 
-      "Distance (m)", "Photo URL", "Status", "Note", "OT (นาที)", "ออกก่อน (นาที)", "เข้าสาย (นาที)"
+      "Distance (m)", "Photo URL", "Status", "Note", "OT (นาที)", "ออกก่อน (นาที)", "เข้าสาย (นาที)",
+      "อุปกรณ์ที่ใช้ลงเวลา", "Device ID"
     ]);
   } else {
-    var lastCol = Math.max(sheet.getLastColumn(), 12);
+    var lastCol = Math.max(sheet.getLastColumn(), 14);
     var headerRow = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
     if (!headerRow[9] || headerRow[9].toString().trim() === "") {
       sheet.getRange(1, 10).setValue("OT (นาที)");
@@ -627,11 +982,17 @@ function ensureLogHeaders(sheet) {
     if (!headerRow[11] || headerRow[11].toString().trim() === "") {
       sheet.getRange(1, 12).setValue("เข้าสาย (นาที)");
     }
+    if (!headerRow[12] || headerRow[12].toString().trim() === "") {
+      sheet.getRange(1, 13).setValue("อุปกรณ์ที่ใช้ลงเวลา");
+    }
+    if (!headerRow[13] || headerRow[13].toString().trim() === "") {
+      sheet.getRange(1, 14).setValue("Device ID");
+    }
   }
 }
 
 // ฟังก์ชันแปลงจำนวนนาทีเป็นข้อความ ชั่วโมง/นาที ที่อ่านง่าย
-function formatMinutesToText(minutes) {
+function formatMinutesToText_(minutes) {
   minutes = Math.round(minutes);
   if (minutes < 60) {
     return minutes + " นาที";
@@ -645,7 +1006,7 @@ function formatMinutesToText(minutes) {
 }
 
 // ฟังก์ชันดึงค่านาทีเข้าสายจากแถวในตาราง Logs (รองรับทั้งข้อมูลใหม่ในคอลัมน์ L และข้อมูลเก่าที่อยู่ใน Note)
-function extractLateMinutesFromRow(row) {
+function extractLateMinutesFromRow_(row) {
   var colLate = Number(row[11]);
   if (!isNaN(colLate) && colLate > 0) {
     return colLate;
@@ -669,7 +1030,7 @@ function extractLateMinutesFromRow(row) {
 }
 
 // 7. ฟังก์ชันบันทึกเวลาสแกนเข้า-ออกงาน (ตรวจสอบสถานะ ACTIVE + กฎ 4 ข้อ + บันทึกนาทีเข้าสาย)
-function recordAttendance(payload) {
+function recordAttendance_(payload) {
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var userSheet = ss.getSheetByName("Users");
@@ -702,8 +1063,8 @@ function recordAttendance(payload) {
           lat: Number(branches[i][2]),
           lng: Number(branches[i][3]),
           radius: Number(branches[i][4]),
-          workStart: formatSheetTime(branches[i][5], "08:30"),
-          workEnd: formatSheetTime(branches[i][6], "17:30")
+          workStart: formatSheetTime_(branches[i][5], "08:30"),
+          workEnd: formatSheetTime_(branches[i][6], "17:30")
         };
         break;
       }
@@ -714,7 +1075,7 @@ function recordAttendance(payload) {
     }
     
     // ตรวจสอบระยะห่างด้วย Haversine
-    var distance = calculateDistance(payload.lat, payload.lng, targetBranch.lat, targetBranch.lng);
+    var distance = calculateDistance_(payload.lat, payload.lng, targetBranch.lat, targetBranch.lng);
     if (distance > targetBranch.radius) {
       return { 
         success: false, 
@@ -727,8 +1088,10 @@ function recordAttendance(payload) {
     var todayDateStr = Utilities.formatDate(now, tz, "yyyy-MM-dd");
     var currentTimeStr = Utilities.formatDate(now, tz, "HH:mm");
     var timestampStr = Utilities.formatDate(now, tz, "yyyy-MM-dd HH:mm:ss");
+    var deviceName = sanitizeDeviceText_(payload.deviceName, 150) || "ไม่ทราบอุปกรณ์";
+    var deviceId = sanitizeDeviceText_(payload.deviceId, 64);
 
-    ensureLogHeaders(logSheet);
+    ensureLogHeaders_(logSheet);
 
     var logData = logSheet.getDataRange().getValues();
 
@@ -786,12 +1149,12 @@ function recordAttendance(payload) {
 
       if (currentMin > startMin) {
         lateMinutes = currentMin - startMin;
-        var lateText = formatMinutesToText(lateMinutes);
+        var lateText = formatMinutesToText_(lateMinutes);
         status = "LATE";
         note = "เข้างานสาย " + lateMinutes + " นาที (" + lateText + " | เริ่มงาน " + workStartTimeStr + " สแกนเข้า " + currentTimeStr + ")";
       }
 
-      var photoUrl = saveImageToDrive(payload.imageBase64, payload.userId);
+      var photoUrl = saveImageToDrive_(payload.imageBase64, payload.userId);
       var logId = "LOG" + Utilities.formatDate(now, tz, "yyyyMMddHHmmss");
 
       logSheet.appendRow([
@@ -806,7 +1169,9 @@ function recordAttendance(payload) {
         note,
         0,           // OT (นาที)
         0,           // ออกก่อน (นาที)
-        lateMinutes  // เข้าสาย (นาที)
+        lateMinutes, // เข้าสาย (นาที)
+        deviceName,  // อุปกรณ์ที่ใช้ลงเวลา
+        deviceId     // Device ID
       ]);
 
       var checkInMsg = "ลงเวลาเข้างานเรียบร้อยแล้ว (" + currentTimeStr + " น.)";
@@ -836,17 +1201,17 @@ function recordAttendance(payload) {
 
       if (currentMin > endMin) {
         otMinutes = currentMin - endMin;
-        var otText = formatMinutesToText(otMinutes);
+        var otText = formatMinutesToText_(otMinutes);
         status = "OVERTIME";
         note = "ทำโอที " + otMinutes + " นาที (" + otText + " | เลิกงาน " + workEndTimeStr + " สแกนออก " + currentTimeStr + ")";
       } else if (currentMin < endMin) {
         earlyMinutes = endMin - currentMin;
-        var earlyText = formatMinutesToText(earlyMinutes);
+        var earlyText = formatMinutesToText_(earlyMinutes);
         status = "EARLY_LEAVE";
         note = "ออกก่อนเวลา " + earlyMinutes + " นาที (" + earlyText + " | เลิกงาน " + workEndTimeStr + " สแกนออก " + currentTimeStr + ")";
       }
 
-      var photoUrl = saveImageToDrive(payload.imageBase64, payload.userId);
+      var photoUrl = saveImageToDrive_(payload.imageBase64, payload.userId);
 
       if (existingCheckOutRow > 0) {
         logSheet.getRange(existingCheckOutRow, 3).setValue(timestampStr);
@@ -857,6 +1222,8 @@ function recordAttendance(payload) {
         logSheet.getRange(existingCheckOutRow, 10).setValue(otMinutes);
         logSheet.getRange(existingCheckOutRow, 11).setValue(earlyMinutes);
         logSheet.getRange(existingCheckOutRow, 12).setValue(0);
+        logSheet.getRange(existingCheckOutRow, 13).setValue(deviceName);
+        logSheet.getRange(existingCheckOutRow, 14).setValue(deviceId);
 
         var updateMsg = "อัปเดตเวลาออกงานเป็นเวลาล่าสุด (" + currentTimeStr + " น.) เรียบร้อยแล้ว";
         if (otMinutes > 0) updateMsg += " (โอที " + otMinutes + " นาที)";
@@ -881,7 +1248,9 @@ function recordAttendance(payload) {
           note,
           otMinutes,
           earlyMinutes,
-          0
+          0,
+          deviceName,
+          deviceId
         ]);
 
         var checkOutMsg = "ลงเวลาออกงานเรียบร้อยแล้ว (" + currentTimeStr + " น.)";
@@ -903,7 +1272,7 @@ function recordAttendance(payload) {
 }
 
 // 8. ฟังก์ชันยื่นคำขอลางาน
-function submitLeaveRequest(data) {
+function submitLeaveRequest_(data) {
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var userSheet = ss.getSheetByName("Users");
@@ -939,10 +1308,10 @@ function submitLeaveRequest(data) {
 }
 
 // 9. ดึงประวัติการลงเวลาล่าสุด
-function getRecentLogs(userId) {
+function getRecentLogs_(userId) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var logSheet = ss.getSheetByName("Logs");
-  ensureLogHeaders(logSheet);
+  ensureLogHeaders_(logSheet);
   var data = logSheet.getDataRange().getValues();
   var logs = [];
   var tz = Session.getScriptTimeZone();
@@ -956,7 +1325,7 @@ function getRecentLogs(userId) {
 
       var otVal = Number(data[i][9]) || 0;
       var earlyVal = Number(data[i][10]) || 0;
-      var lateVal = extractLateMinutesFromRow(data[i]);
+      var lateVal = extractLateMinutesFromRow_(data[i]);
 
       logs.push({
         timestamp: tsStr,
@@ -969,7 +1338,8 @@ function getRecentLogs(userId) {
         late: lateVal > 0 ? lateVal + " นาที" : "",
         otMinutes: otVal,
         earlyMinutes: earlyVal,
-        lateMinutes: lateVal
+        lateMinutes: lateVal,
+        device: data[i][12] ? data[i][12].toString() : ""
       });
       if (logs.length >= 5) break;
     }
@@ -978,7 +1348,7 @@ function getRecentLogs(userId) {
 }
 
 // 10. ดึงข้อมูลสรุปแดชบอร์ดรายเดือนสำหรับแอดมิน (สรุป ขาด, ลา, มา, สาย, เวลาโอที, ค่าโอที)
-function getAdminMonthlySummary(monthStr, adminEmail) {
+function getAdminMonthlySummary_(monthStr, adminEmail) {
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var tz = Session.getScriptTimeZone();
@@ -992,8 +1362,8 @@ function getAdminMonthlySummary(monthStr, adminEmail) {
     var leaveSheet = ss.getSheetByName("Leaves");
     var branchSheet = ss.getSheetByName("Branches");
 
-    ensureUserHeaders(userSheet);
-    ensureLogHeaders(logSheet);
+    ensureUserHeaders_(userSheet);
+    ensureLogHeaders_(logSheet);
 
     var usersData = userSheet ? userSheet.getDataRange().getValues() : [];
     var logsData = logSheet ? logSheet.getDataRange().getValues() : [];
@@ -1001,7 +1371,7 @@ function getAdminMonthlySummary(monthStr, adminEmail) {
     var branchesData = branchSheet ? branchSheet.getDataRange().getValues() : [];
 
     // ตรวจสอบสิทธิ์ Admin
-    if (!verifyAdminAccess(usersData, adminEmail)) {
+    if (!verifyAdminAccess_(usersData, adminEmail)) {
       return {
         success: false,
         message: "ปฏิเสธการเข้าถึง: เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่สามารถดูแดชบอร์ดสรุปรายเดือนได้"
@@ -1092,7 +1462,7 @@ function getAdminMonthlySummary(monthStr, adminEmail) {
 
       if (lType === "CHECK_IN") {
         st.presentDatesMap[dateStr] = true;
-        var lateMin = extractLateMinutesFromRow(row);
+        var lateMin = extractLateMinutesFromRow_(row);
         if (lStatus === "LATE" || lateMin > 0) {
           st.lateCount++;
           st.lateMinutes += lateMin;
@@ -1179,8 +1549,8 @@ function getAdminMonthlySummary(monthStr, adminEmail) {
       item.absentDays = absentCount;
 
       item.otPayBaht = Number((item.otMinutes * item.otRatePerMinute).toFixed(2));
-      item.otHoursText = formatMinutesToText(item.otMinutes);
-      item.lateHoursText = formatMinutesToText(item.lateMinutes);
+      item.otHoursText = formatMinutesToText_(item.otMinutes);
+      item.lateHoursText = formatMinutesToText_(item.lateMinutes);
 
       totals.presentDays += item.presentDays;
       totals.leaveDays += item.leaveDays;
@@ -1215,8 +1585,8 @@ function getAdminMonthlySummary(monthStr, adminEmail) {
     }
 
     totals.otPayBaht = Number(totals.otPayBaht.toFixed(2));
-    totals.otHoursText = formatMinutesToText(totals.otMinutes);
-    totals.lateHoursText = formatMinutesToText(totals.lateMinutes);
+    totals.otHoursText = formatMinutesToText_(totals.otMinutes);
+    totals.lateHoursText = formatMinutesToText_(totals.lateMinutes);
 
     return {
       success: true,
@@ -1233,7 +1603,7 @@ function getAdminMonthlySummary(monthStr, adminEmail) {
 }
 
 // 11. ตารางสรุปรายวันสำหรับพนักงาน (User Daily Summary) เลือกดูตามเดือน
-function getUserDailySummary(userId, monthStr) {
+function getUserDailySummary_(userId, monthStr) {
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var tz = Session.getScriptTimeZone();
@@ -1250,8 +1620,8 @@ function getUserDailySummary(userId, monthStr) {
     var leaveSheet = ss.getSheetByName("Leaves");
     var branchSheet = ss.getSheetByName("Branches");
 
-    ensureUserHeaders(userSheet);
-    ensureLogHeaders(logSheet);
+    ensureUserHeaders_(userSheet);
+    ensureLogHeaders_(logSheet);
 
     var usersData = userSheet ? userSheet.getDataRange().getValues() : [];
     var logsData = logSheet ? logSheet.getDataRange().getValues() : [];
@@ -1263,8 +1633,8 @@ function getUserDailySummary(userId, monthStr) {
       if (branchesData[b][0]) {
         branchMap[branchesData[b][0]] = {
           name: branchesData[b][1] || branchesData[b][0],
-          workStart: formatSheetTime(branchesData[b][5], "08:30"),
-          workEnd: formatSheetTime(branchesData[b][6], "17:30")
+          workStart: formatSheetTime_(branchesData[b][5], "08:30"),
+          workEnd: formatSheetTime_(branchesData[b][6], "17:30")
         };
       }
     }
@@ -1338,13 +1708,15 @@ function getUserDailySummary(userId, monthStr) {
         if (!dLog.checkInTime) {
           dLog.checkInTime = timeStr;
           dLog.checkInPhoto = lPhoto;
+          dLog.checkInDevice = row[12] ? row[12].toString() : "";
           dLog.checkInStatus = lStatus;
-          dLog.lateMinutes = extractLateMinutesFromRow(row);
+          dLog.lateMinutes = extractLateMinutesFromRow_(row);
           if (lNote) dLog.notes.push(lNote);
         }
       } else if (lType === "CHECK_OUT") {
         dLog.checkOutTime = timeStr;
         dLog.checkOutPhoto = lPhoto;
+        dLog.checkOutDevice = row[12] ? row[12].toString() : "";
         dLog.checkOutStatus = lStatus;
         dLog.otMinutes = Number(row[9]) || 0;
         dLog.earlyMinutes = Number(row[10]) || 0;
@@ -1485,6 +1857,8 @@ function getUserDailySummary(userId, monthStr) {
         checkOutTime: checkOutTime,
         checkInPhoto: logItem ? (logItem.checkInPhoto || "") : "",
         checkOutPhoto: logItem ? (logItem.checkOutPhoto || "") : "",
+        checkInDevice: logItem ? (logItem.checkInDevice || "") : "",
+        checkOutDevice: logItem ? (logItem.checkOutDevice || "") : "",
         lateMinutes: lateMin,
         earlyMinutes: earlyMin,
         otMinutes: otMinVal,
@@ -1513,7 +1887,7 @@ function getUserDailySummary(userId, monthStr) {
 }
 
 // 12. ตารางสรุปรายวันของพนักงานทุกคนสำหรับแอดมิน (Admin Daily Summary) เลือกดูตามวันที่และสาขา
-function getAdminDailySummary(dateStr, adminEmail, filterBranchId) {
+function getAdminDailySummary_(dateStr, adminEmail, filterBranchId) {
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var tz = Session.getScriptTimeZone();
@@ -1527,15 +1901,15 @@ function getAdminDailySummary(dateStr, adminEmail, filterBranchId) {
     var leaveSheet = ss.getSheetByName("Leaves");
     var branchSheet = ss.getSheetByName("Branches");
 
-    ensureUserHeaders(userSheet);
-    ensureLogHeaders(logSheet);
+    ensureUserHeaders_(userSheet);
+    ensureLogHeaders_(logSheet);
 
     var usersData = userSheet ? userSheet.getDataRange().getValues() : [];
     var logsData = logSheet ? logSheet.getDataRange().getValues() : [];
     var leavesData = leaveSheet ? leaveSheet.getDataRange().getValues() : [];
     var branchesData = branchSheet ? branchSheet.getDataRange().getValues() : [];
 
-    if (!verifyAdminAccess(usersData, adminEmail)) {
+    if (!verifyAdminAccess_(usersData, adminEmail)) {
       return {
         success: false,
         message: "ปฏิเสธการเข้าถึง: เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่สามารถดูตารางสรุปรายวันทั้งหมดได้"
@@ -1547,14 +1921,15 @@ function getAdminDailySummary(dateStr, adminEmail, filterBranchId) {
       if (branchesData[b][0]) {
         branchMap[branchesData[b][0]] = {
           name: branchesData[b][1] || branchesData[b][0],
-          workStart: formatSheetTime(branchesData[b][5], "08:30"),
-          workEnd: formatSheetTime(branchesData[b][6], "17:30")
+          workStart: formatSheetTime_(branchesData[b][5], "08:30"),
+          workEnd: formatSheetTime_(branchesData[b][6], "17:30")
         };
       }
     }
 
     // ดึงข้อมูลสแกนของทุกคนในวันที่เลือก
     var logsByUser = {};
+    var deviceUsers = {}; // deviceId -> { userId: true } ใช้ตรวจจับการลงเวลาแทนกันจากเครื่องเดียวกัน
     for (var l = 1; l < logsData.length; l++) {
       var row = logsData[l];
       var lUid = row[1];
@@ -1588,17 +1963,27 @@ function getAdminDailySummary(dateStr, adminEmail, filterBranchId) {
       var lType = row[3];
       var photoUrl = row[6] ? row[6].toString() : "";
       var noteStr = row[8] ? row[8].toString() : "";
+      var devName = row[12] ? row[12].toString() : "";
+      var devId = row[13] ? row[13].toString() : "";
+      if (devId) {
+        if (!deviceUsers[devId]) deviceUsers[devId] = {};
+        deviceUsers[devId][lUid] = true;
+      }
 
       if (lType === "CHECK_IN") {
         if (!uLog.checkInTime) {
           uLog.checkInTime = timeStr;
           uLog.checkInPhoto = photoUrl;
-          uLog.lateMinutes = extractLateMinutesFromRow(row);
+          uLog.checkInDevice = devName;
+          uLog.checkInDeviceId = devId;
+          uLog.lateMinutes = extractLateMinutesFromRow_(row);
           if (noteStr) uLog.notes.push(noteStr);
         }
       } else if (lType === "CHECK_OUT") {
         uLog.checkOutTime = timeStr;
         uLog.checkOutPhoto = photoUrl;
+        uLog.checkOutDevice = devName;
+        uLog.checkOutDeviceId = devId;
         uLog.otMinutes = Number(row[9]) || 0;
         uLog.earlyMinutes = Number(row[10]) || 0;
         if (noteStr) uLog.notes.push(noteStr);
@@ -1721,6 +2106,16 @@ function getAdminDailySummary(dateStr, adminEmail, filterBranchId) {
         totals.absentCount++;
       }
 
+      var sharedWith = [];
+      if (uLog) {
+        [uLog.checkInDeviceId, uLog.checkOutDeviceId].forEach(function(did) {
+          if (!did || !deviceUsers[did]) return;
+          for (var otherUid in deviceUsers[did]) {
+            if (otherUid !== uid && sharedWith.indexOf(otherUid) < 0) sharedWith.push(otherUid);
+          }
+        });
+      }
+
       staffDailyRows.push({
         userId: uid,
         name: uName,
@@ -1735,6 +2130,9 @@ function getAdminDailySummary(dateStr, adminEmail, filterBranchId) {
         checkOutTime: checkOutTime,
         checkInPhoto: checkInPhoto,
         checkOutPhoto: checkOutPhoto,
+        checkInDevice: uLog ? (uLog.checkInDevice || "") : "",
+        checkOutDevice: uLog ? (uLog.checkOutDevice || "") : "",
+        sharedDeviceWith: sharedWith,
         lateMinutes: lateMin,
         earlyMinutes: earlyMin,
         otRatePerHour: Number(otHour.toFixed(2)),

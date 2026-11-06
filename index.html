@@ -147,23 +147,27 @@
             <span class="badge bg-secondary badge-status" id="userRole">-</span>
             <span class="badge bg-secondary badge-status ms-1" id="userStatusBadge" style="display: none;">-</span>
           </div>
-          <div class="mt-1" id="switchAccBtn" style="display: none;">
+          <div class="mt-1 d-flex gap-2 justify-content-end" id="userActionsBar" style="display: none;">
+            <a href="javascript:void(0)" onclick="promptChangeMyPassword()" class="text-primary small text-decoration-none" style="font-size: 0.75rem;">
+              <i class="fa-solid fa-key me-1"></i>เปลี่ยนรหัสผ่าน
+            </a>
+            <span class="text-muted" style="font-size: 0.7rem;">|</span>
             <a href="javascript:void(0)" onclick="logoutUser()" class="text-muted small text-decoration-none" style="font-size: 0.75rem;">
-              <i class="fa-solid fa-right-from-bracket me-1"></i>สลับบัญชี
+              <i class="fa-solid fa-right-from-bracket me-1"></i>ออกจากระบบ
             </a>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- ฟอร์มกรอกอีเมลเข้าใช้งาน (แสดงเมื่อยังไม่มีการจำอีเมลในเครื่อง) -->
+    <!-- ฟอร์มเข้าสู่ระบบ (รหัสผ่าน หรือ Gmail) -->
     <div id="loginSection" class="card card-main p-4 mb-3 bg-white" style="display: none;">
       <div class="text-center mb-3">
         <div class="rounded-circle bg-primary-subtle text-primary d-inline-flex align-items-center justify-content-center mb-2 shadow-sm" style="width: 58px; height: 58px; font-size: 24px;">
           <i class="fa-solid fa-id-badge"></i>
         </div>
         <h5 class="fw-bold text-dark mb-1">เข้าสู่ระบบลงเวลา</h5>
-        <p class="text-muted small mb-0">ระบุอีเมล Gmail ของคุณเพื่อเริ่มต้นใช้งาน</p>
+        <p class="text-muted small mb-0">เข้าสู่ระบบด้วยรหัสผ่าน หรือลงชื่อเข้าใช้ด้วย Gmail</p>
       </div>
 
       <div class="mb-3">
@@ -174,15 +178,48 @@
         </div>
       </div>
 
-      <button class="btn btn-primary w-100 py-2 fw-bold shadow-sm" onclick="submitEmailLogin()">
-        <i class="fa-solid fa-arrow-right-to-bracket me-1"></i> เข้าสู่ระบบ
+      <div class="mb-3">
+        <label class="form-label fw-bold small text-secondary">รหัสผ่าน <span class="text-danger">*</span></label>
+        <div class="input-group">
+          <span class="input-group-text bg-light"><i class="fa-solid fa-lock text-muted"></i></span>
+          <input type="password" id="loginPasswordInput" class="form-control" placeholder="ระบุรหัสผ่าน (อย่างน้อย 6 ตัวอักษร)" required onkeydown="if(event.key==='Enter') submitPasswordLogin()">
+          <button class="btn btn-outline-secondary" type="button" onclick="togglePasswordVisibility('loginPasswordInput', this)">
+            <i class="fa-solid fa-eye"></i>
+          </button>
+        </div>
+        <div class="text-end mt-1">
+          <a href="javascript:void(0)" onclick="showFirstTimePasswordSetup()" class="text-decoration-none text-muted" style="font-size: 0.75rem;">
+            เข้าใช้งานครั้งแรก / ยังไม่เคยตั้งรหัสผ่าน?
+          </a>
+        </div>
+      </div>
+
+      <button class="btn btn-primary w-100 py-2 fw-bold shadow-sm mb-3" onclick="submitPasswordLogin()">
+        <i class="fa-solid fa-arrow-right-to-bracket me-1"></i> เข้าสู่ระบบด้วยรหัสผ่าน
       </button>
+
+      <div class="d-flex align-items-center my-3">
+        <hr class="flex-grow-1 my-0 text-muted">
+        <span class="px-2 small text-muted">หรือ</span>
+        <hr class="flex-grow-1 my-0 text-muted">
+      </div>
+
+      <button type="button" class="btn btn-outline-danger w-100 py-2 fw-bold mb-3 shadow-sm d-flex align-items-center justify-content-center gap-2" onclick="loginWithGmailAccount()">
+        <i class="fa-brands fa-google text-danger fs-5"></i> ลงชื่อเข้าใช้ผ่าน Gmail
+      </button>
+
+      <div class="text-center pt-2 border-top">
+        <span class="text-muted small">ยังไม่มีบัญชีพนักงาน? </span>
+        <a href="javascript:void(0)" onclick="showRegisterSection()" class="fw-bold text-primary text-decoration-none small">
+          ลงทะเบียนใหม่
+        </a>
+      </div>
     </div>
 
-    <!-- ฟอร์มลงทะเบียนพนักงานใหม่ (แสดงเมื่อยังไม่มีข้อมูลใน Sheet Users) -->
+    <!-- ฟอร์มลงทะเบียนพนักงานใหม่ (กำหนดรหัสผ่าน) -->
     <div id="registerSection" class="card card-main p-4 mb-3 bg-white" style="display: none;">
       <div class="text-center mb-3">
-        <div class="rounded-circle bg-primary-subtle text-primary d-inline-flex align-items-center justify-content-center mb-2" style="width: 56px; height: 56px; font-size: 24px;">
+        <div class="rounded-circle bg-primary-subtle text-primary d-inline-flex align-items-center justify-content-center mb-2 shadow-sm" style="width: 56px; height: 56px; font-size: 24px;">
           <i class="fa-solid fa-address-card"></i>
         </div>
         <h5 class="fw-bold text-dark mb-1">ลงทะเบียนพนักงานใหม่</h5>
@@ -193,7 +230,7 @@
         <label class="form-label fw-bold small text-secondary">อีเมล Gmail <span class="text-danger">*</span></label>
         <div class="input-group">
           <span class="input-group-text bg-light"><i class="fa-solid fa-envelope text-muted"></i></span>
-          <input type="email" id="regEmail" class="form-control" placeholder="name@gmail.com" required readonly>
+          <input type="email" id="regEmail" class="form-control" placeholder="name@gmail.com" required>
         </div>
       </div>
 
@@ -205,6 +242,28 @@
         </div>
       </div>
 
+      <div class="mb-3">
+        <label class="form-label fw-bold small text-secondary">กำหนดรหัสผ่าน (อย่างน้อย 6 ตัวอักษร) <span class="text-danger">*</span></label>
+        <div class="input-group">
+          <span class="input-group-text bg-light"><i class="fa-solid fa-lock text-muted"></i></span>
+          <input type="password" id="regPassword" class="form-control" placeholder="กำหนดรหัสผ่านใหม่" required>
+          <button class="btn btn-outline-secondary" type="button" onclick="togglePasswordVisibility('regPassword', this)">
+            <i class="fa-solid fa-eye"></i>
+          </button>
+        </div>
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label fw-bold small text-secondary">ยืนยันรหัสผ่าน <span class="text-danger">*</span></label>
+        <div class="input-group">
+          <span class="input-group-text bg-light"><i class="fa-solid fa-lock text-muted"></i></span>
+          <input type="password" id="regPasswordConfirm" class="form-control" placeholder="พิมพ์รหัสผ่านอีกครั้ง" required>
+          <button class="btn btn-outline-secondary" type="button" onclick="togglePasswordVisibility('regPasswordConfirm', this)">
+            <i class="fa-solid fa-eye"></i>
+          </button>
+        </div>
+      </div>
+
       <div class="mb-4">
         <label class="form-label fw-bold small text-secondary">สาขาประจำการ <span class="text-danger">*</span></label>
         <div class="input-group">
@@ -213,9 +272,16 @@
         </div>
       </div>
 
-      <button class="btn btn-primary w-100 py-2 fw-bold shadow-sm" onclick="submitRegister()">
+      <button class="btn btn-primary w-100 py-2 fw-bold shadow-sm mb-3" onclick="submitRegister()">
         <i class="fa-solid fa-check me-1"></i> ยืนยันการลงทะเบียน
       </button>
+
+      <div class="text-center pt-2 border-top">
+        <span class="text-muted small">มีบัญชีอยู่แล้ว? </span>
+        <a href="javascript:void(0)" onclick="showLoginSection()" class="fw-bold text-primary text-decoration-none small">
+          กลับไปหน้าเข้าสู่ระบบ
+        </a>
+      </div>
     </div>
 
     <!-- หน้าจอแจ้งเตือนรออนุมัติ (แสดงเมื่อผู้ใช้งานมี Status = INACTIVE) -->
@@ -313,9 +379,15 @@
             </div>
 
             <!-- กล่องแจ้งสถานะ GPS -->
-            <div id="gpsStatusBox" class="alert alert-secondary py-2 px-3 small d-flex align-items-center justify-content-between mb-3 border-0">
+            <div id="gpsStatusBox" class="alert alert-secondary py-2 px-3 small d-flex align-items-center justify-content-between mb-2 border-0">
               <span><i class="fa-solid fa-location-crosshairs me-1 text-primary"></i> ระยะห่างจากสาขา:</span>
               <span id="gpsDistance" class="fw-bold">กำลังระบุพิกัด GPS...</span>
+            </div>
+
+            <!-- กล่องแสดงอุปกรณ์/เครื่องที่กำลังใช้งานลงเวลา -->
+            <div class="alert alert-light border py-2 px-3 small d-flex align-items-center justify-content-between mb-3 text-secondary">
+              <span><i class="fa-solid fa-desktop me-1 text-primary"></i> เครื่องที่ใช้ลงเวลา:</span>
+              <span id="currentDeviceLabel" class="fw-bold text-dark text-truncate ms-2" style="max-width: 250px;">กำลังตรวจสอบ...</span>
             </div>
 
             <!-- ปุ่มกดเข้างานและออกงาน -->
@@ -449,6 +521,7 @@
                     <th>สถานะ</th>
                     <th class="text-success">เวลาเข้างาน</th>
                     <th class="text-danger">เวลาออกงาน</th>
+                    <th>เครื่องที่สแกน (เข้า / ออก)</th>
                     <th class="text-warning-emphasis">เข้าสาย (นาที)</th>
                     <th class="text-danger">ออกก่อน (นาที)</th>
                     <th class="text-primary">โอที (นาที)</th>
@@ -546,6 +619,7 @@
                     <th>สถานะวันนี้</th>
                     <th class="text-success">เวลาเข้างาน</th>
                     <th class="text-danger">เวลาออกงาน</th>
+                    <th>เครื่องที่สแกน (เข้า / ออก)</th>
                     <th class="text-warning-emphasis">เข้าสาย (นาที)</th>
                     <th class="text-danger">ออกก่อน (นาที)</th>
                     <th>ค่าโอที/ชม.</th>
@@ -726,12 +800,13 @@
                     <th>สถานะบัญชี (Status)</th>
                     <th>ค่าโอที/ชม. (บาท)</th>
                     <th>โอที/นาที (บาท)</th>
+                    <th>รหัสผ่าน</th>
                     <th>บันทึก / จัดการ</th>
                   </tr>
                 </thead>
                 <tbody id="allUsersManageTableBody">
                   <tr>
-                    <td colspan="8" class="text-center text-muted py-4">กำลังโหลดข้อมูลพนักงาน...</td>
+                    <td colspan="9" class="text-center text-muted py-4">กำลังโหลดข้อมูลพนักงาน...</td>
                   </tr>
                 </tbody>
               </table>
@@ -852,10 +927,75 @@
     let lastDashboardResponse = null;
     let lastUserDailyResponse = null;
     let lastAdminDailyResponse = null;
+    let sessionToken = localStorage.getItem("attendance_session_token") || "";
 
-    // ฟังก์ชันเชื่อมต่อไปยัง Google Apps Script ผ่าน POST
+    // ข้อมูลตรวจจับอุปกรณ์ (เครื่องที่ใช้ลงเวลา)
+    function getDeviceInfo() {
+      let devId = localStorage.getItem("fscan_device_id");
+      if (!devId) {
+        devId = 'DEV-' + Math.random().toString(36).substring(2, 9).toUpperCase() + '-' + Date.now().toString(36).toUpperCase();
+        localStorage.setItem("fscan_device_id", devId);
+      }
+      
+      const ua = navigator.userAgent || '';
+      let os = 'อุปกรณ์ทั่วไป';
+      if (/Windows NT 10.0/i.test(ua)) os = 'Windows 10/11';
+      else if (/Windows NT/i.test(ua)) os = 'Windows PC';
+      else if (/Android/i.test(ua)) {
+        const m = ua.match(/Android\s([0-9\.]+);?\s*([^;)]+)?/);
+        os = m && m[2] ? `Android (${m[2].trim()})` : 'Android';
+      } else if (/iPhone/i.test(ua)) {
+        os = 'iPhone';
+      } else if (/iPad/i.test(ua)) {
+        os = 'iPad';
+      } else if (/Macintosh|Mac OS/i.test(ua)) {
+        os = 'Mac';
+      } else if (/Linux/i.test(ua)) {
+        os = 'Linux PC';
+      }
+      
+      let browser = 'Browser';
+      if (/Edg\//i.test(ua)) browser = 'Edge';
+      else if (/Chrome\//i.test(ua)) browser = 'Chrome';
+      else if (/Safari\//i.test(ua)) browser = 'Safari';
+      else if (/Firefox\//i.test(ua)) browser = 'Firefox';
+      else if (/Line\//i.test(ua)) browser = 'LINE';
+      
+      const deviceName = `${os} • ${browser}`;
+      return { deviceName, deviceId: devId };
+    }
+
+    function renderCurrentDeviceDisplay() {
+      const dev = getDeviceInfo();
+      const label = document.getElementById('currentDeviceLabel');
+      if (label) {
+        label.innerText = dev.deviceName;
+      }
+    }
+
+    // สลับดู / ซ่อนรหัสผ่าน
+    function togglePasswordVisibility(inputId, btn) {
+      const input = document.getElementById(inputId);
+      if (!input) return;
+      const icon = btn.querySelector('i');
+      if (input.type === 'password') {
+        input.type = 'text';
+        if (icon) {
+          icon.classList.remove('fa-eye');
+          icon.classList.add('fa-eye-slash');
+        }
+      } else {
+        input.type = 'password';
+        if (icon) {
+          icon.classList.remove('fa-eye-slash');
+          icon.classList.add('fa-eye');
+        }
+      }
+    }
+
+    // ฟังก์ชันเชื่อมต่อไปยัง Google Apps Script ผ่าน POST พร้อมแนบ Token
     async function callApi(action, data = {}) {
-      const payload = { action: action, ...data };
+      const payload = { action: action, token: sessionToken, ...data };
       const response = await fetch(SCRIPT_URL, {
         method: 'POST',
         redirect: 'follow',
@@ -864,7 +1004,13 @@
         },
         body: JSON.stringify(payload)
       });
-      return await response.json();
+      const res = await response.json();
+      if (res && res.authRequired) {
+        sessionToken = "";
+        localStorage.removeItem("attendance_session_token");
+        showLoginSection();
+      }
+      return res;
     }
 
     window.onload = function() {
@@ -882,6 +1028,7 @@
       const adminDateInput = document.getElementById('adminDailyDatePicker');
       if (adminDateInput) adminDateInput.value = `${yyyy}-${mm}-${dd}`;
 
+      renderCurrentDeviceDisplay();
       watchLocation();
       initUserSession();
     };
@@ -943,27 +1090,346 @@
 
     // จัดการ Session ผู้ใช้
     function initUserSession() {
+      renderCurrentDeviceDisplay();
       const savedEmail = localStorage.getItem("attendance_user_email") || "";
-      if (savedEmail) {
+      sessionToken = localStorage.getItem("attendance_session_token") || "";
+
+      if (savedEmail && sessionToken) {
         loadUserData(savedEmail);
       } else {
-        document.getElementById('userName').innerText = "ยินดีต้อนรับ";
-        document.getElementById('userEmail').innerText = "กรุณาระบุอีเมล";
-        document.getElementById('mainSection').style.display = 'none';
-        document.getElementById('registerSection').style.display = 'none';
-        document.getElementById('pendingApprovalSection').style.display = 'none';
-        document.getElementById('loginSection').style.display = 'block';
+        showLoginSection();
       }
     }
 
-    function submitEmailLogin() {
-      const email = document.getElementById('loginEmailInput').value.trim();
+    function showLoginSection() {
+      document.getElementById('userName').innerText = "ยินดีต้อนรับ";
+      document.getElementById('userEmail').innerText = "กรุณาเข้าสู่ระบบ";
+      document.getElementById('userRole').innerText = "-";
+      document.getElementById('userRole').className = 'badge bg-secondary badge-status';
+      document.getElementById('userStatusBadge').style.display = 'none';
+      const actionsBar = document.getElementById('userActionsBar');
+      if (actionsBar) actionsBar.style.display = 'none';
+
+      document.getElementById('mainSection').style.display = 'none';
+      document.getElementById('registerSection').style.display = 'none';
+      document.getElementById('pendingApprovalSection').style.display = 'none';
+      document.getElementById('loginSection').style.display = 'block';
+
+      loadPublicConfig();
+    }
+
+    function showRegisterSection(prefillEmail = "") {
+      document.getElementById('mainSection').style.display = 'none';
+      document.getElementById('loginSection').style.display = 'none';
+      document.getElementById('pendingApprovalSection').style.display = 'none';
+      document.getElementById('registerSection').style.display = 'block';
+
+      if (prefillEmail) {
+        document.getElementById('regEmail').value = prefillEmail;
+      }
+      loadPublicConfig();
+    }
+
+    async function loadPublicConfig() {
+      if (branches && branches.length > 0) {
+        populateBranchSelectDropdowns();
+        return;
+      }
+      try {
+        const res = await callApi('getPublicConfig', {});
+        if (res && res.branches) {
+          branches = res.branches;
+          populateBranchSelectDropdowns();
+        }
+      } catch (e) {}
+    }
+
+    // เข้าสู่ระบบด้วยรหัสผ่าน
+    async function submitPasswordLogin() {
+      const email = document.getElementById('loginEmailInput').value.trim().toLowerCase();
+      const password = document.getElementById('loginPasswordInput').value;
+
       if (!email || !email.includes('@')) {
         Swal.fire('ข้อมูลไม่ถูกต้อง', 'กรุณาระบุอีเมล Gmail ให้ถูกต้อง', 'warning');
         return;
       }
-      localStorage.setItem("attendance_user_email", email);
-      loadUserData(email);
+      if (!password) {
+        Swal.fire('กรุณาระบุรหัสผ่าน', 'กรุณากรอกรหัสผ่านเพื่อเข้าสู่ระบบ', 'warning');
+        return;
+      }
+
+      Swal.fire({
+        title: 'กำลังเข้าสู่ระบบ...',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+      });
+
+      try {
+        const res = await callApi('loginWithPassword', { email: email, password: password });
+        if (res && res.success) {
+          if (res.token) {
+            sessionToken = res.token;
+            localStorage.setItem("attendance_session_token", sessionToken);
+          }
+          localStorage.setItem("attendance_user_email", email);
+          document.getElementById('loginPasswordInput').value = '';
+          Swal.fire({
+            icon: 'success',
+            title: 'เข้าสู่ระบบสำเร็จ',
+            timer: 1500,
+            showConfirmButton: false
+          });
+          loadUserData(email);
+        } else if (res && res.needPasswordSetup) {
+          Swal.fire({
+            icon: 'info',
+            title: 'เข้าใช้งานครั้งแรก',
+            text: res.message,
+            confirmButtonText: 'ตั้งรหัสผ่านทันที'
+          }).then(() => {
+            showFirstTimePasswordSetup();
+          });
+        } else if (res && res.notRegistered) {
+          Swal.fire({
+            icon: 'info',
+            title: 'ไม่พบบัญชี',
+            text: res.message,
+            confirmButtonText: 'ลงทะเบียนพนักงานใหม่'
+          }).then(() => {
+            showRegisterSection(email);
+          });
+        } else {
+          Swal.fire('เข้าสู่ระบบไม่สำเร็จ', (res && res.message) || 'อีเมลหรือรหัสผ่านไม่ถูกต้อง', 'error');
+        }
+      } catch (err) {
+        Swal.fire('เกิดข้อผิดพลาด', err.message, 'error');
+      }
+    }
+
+    // เข้าสู่ระบบด้วย Gmail
+    async function loginWithGmailAccount() {
+      const { value: email } = await Swal.fire({
+        title: 'ลงชื่อเข้าใช้ผ่าน Gmail',
+        input: 'email',
+        inputLabel: 'ระบุที่อยู่อีเมล Gmail ของคุณ',
+        inputPlaceholder: 'name@gmail.com',
+        showCancelButton: true,
+        confirmButtonText: 'ดำเนินการต่อ',
+        cancelButtonText: 'ยกเลิก',
+        inputValidator: (val) => {
+          if (!val || !val.includes('@')) return 'กรุณากรอกอีเมล Gmail ให้ถูกต้อง';
+        }
+      });
+
+      if (!email) return;
+
+      Swal.fire({
+        title: 'กำลังตรวจสอบบัญชี Gmail...',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+      });
+
+      try {
+        const res = await callApi('loginWithGmail', { email: email.trim().toLowerCase() });
+        if (res && res.success) {
+          if (res.token) {
+            sessionToken = res.token;
+            localStorage.setItem("attendance_session_token", sessionToken);
+          }
+          localStorage.setItem("attendance_user_email", email.trim().toLowerCase());
+          Swal.fire({
+            icon: 'success',
+            title: 'เข้าสู่ระบบสำเร็จ',
+            timer: 1500,
+            showConfirmButton: false
+          });
+          loadUserData(email.trim().toLowerCase());
+        } else if (res && res.notRegistered) {
+          Swal.fire({
+            icon: 'info',
+            title: 'ยังไม่พบบัญชีในระบบ',
+            text: res.message,
+            confirmButtonText: 'ลงทะเบียนพนักงานใหม่'
+          }).then(() => {
+            showRegisterSection(email.trim().toLowerCase());
+          });
+        } else {
+          Swal.fire('เข้าสู่ระบบไม่สำเร็จ', (res && res.message) || 'กรุณาลองใหม่อีกครั้ง', 'warning');
+        }
+      } catch (err) {
+        Swal.fire('เกิดข้อผิดพลาด', err.message, 'error');
+      }
+    }
+
+    // ตั้งรหัสผ่านครั้งแรกสำหรับบัญชีเดิมที่ยังไม่มีรหัสผ่าน
+    async function showFirstTimePasswordSetup() {
+      const emailInput = document.getElementById('loginEmailInput').value.trim();
+      const { value: formValues } = await Swal.fire({
+        title: 'ตั้งรหัสผ่านสำหรับเข้าใช้งาน',
+        html:
+          `<div class="text-start mb-2"><label class="small fw-bold text-secondary">อีเมล Gmail</label>` +
+          `<input id="setupEmail" type="email" class="form-control form-control-sm" value="${emailInput}" placeholder="name@gmail.com"></div>` +
+          `<div class="text-start mb-2"><label class="small fw-bold text-secondary">กำหนดรหัสผ่านใหม่ (อย่างน้อย 6 ตัวอักษร)</label>` +
+          `<input id="setupNewPass" type="password" class="form-control form-control-sm" placeholder="รหัสผ่านใหม่"></div>` +
+          `<div class="text-start"><label class="small fw-bold text-secondary">ยืนยันรหัสผ่าน</label>` +
+          `<input id="setupNewPassConfirm" type="password" class="form-control form-control-sm" placeholder="พิมพ์ซ้ำอีกครั้ง"></div>`,
+        showCancelButton: true,
+        confirmButtonText: 'ตั้งรหัสผ่านและเข้าสู่ระบบ',
+        cancelButtonText: 'ยกเลิก',
+        preConfirm: () => {
+          const email = document.getElementById('setupEmail').value.trim();
+          const newP = document.getElementById('setupNewPass').value;
+          const newPC = document.getElementById('setupNewPassConfirm').value;
+          if (!email || !email.includes('@')) {
+            Swal.showValidationMessage('กรุณากรอกอีเมล Gmail ให้ถูกต้อง');
+            return false;
+          }
+          if (!newP || newP.length < 6) {
+            Swal.showValidationMessage('รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร');
+            return false;
+          }
+          if (newP !== newPC) {
+            Swal.showValidationMessage('รหัสผ่านทั้งสองช่องไม่ตรงกัน');
+            return false;
+          }
+          return { email, password: newP };
+        }
+      });
+
+      if (!formValues) return;
+
+      Swal.fire({
+        title: 'กำลังตั้งรหัสผ่าน...',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+      });
+
+      try {
+        const res = await callApi('loginWithPassword', {
+          email: formValues.email,
+          password: formValues.password,
+          setupPassword: true
+        });
+
+        if (res && res.success) {
+          if (res.token) {
+            sessionToken = res.token;
+            localStorage.setItem("attendance_session_token", sessionToken);
+          }
+          if (res.user && res.user.email) {
+            localStorage.setItem("attendance_user_email", res.user.email);
+          }
+          Swal.fire({
+            icon: 'success',
+            title: 'ตั้งรหัสผ่านสำเร็จ',
+            text: 'เข้าสู่ระบบเรียบร้อยแล้ว',
+            timer: 1800,
+            showConfirmButton: false
+          });
+          loadUserData(res.user ? res.user.email : formValues.email);
+        } else {
+          Swal.fire('เข้าสู่ระบบไม่สำเร็จ', (res && res.message) || 'กรุณาลองใหม่อีกครั้ง', 'error');
+        }
+      } catch (err) {
+        Swal.fire('เกิดข้อผิดพลาด', err.message, 'error');
+      }
+    }
+
+    // เปลี่ยนรหัสผ่านของผู้ใช้ปัจจุบัน
+    async function promptChangeMyPassword() {
+      const { value: formValues } = await Swal.fire({
+        title: 'เปลี่ยนรหัสผ่าน',
+        html:
+          '<div class="text-start mb-2"><label class="small fw-bold text-secondary">รหัสผ่านเดิม</label>' +
+          '<input id="swalOldPass" type="password" class="form-control form-control-sm" placeholder="รหัสผ่านเดิม"></div>' +
+          '<div class="text-start mb-2"><label class="small fw-bold text-secondary">รหัสผ่านใหม่</label>' +
+          '<input id="swalNewPass" type="password" class="form-control form-control-sm" placeholder="อย่างน้อย 6 ตัวอักษร"></div>' +
+          '<div class="text-start"><label class="small fw-bold text-secondary">ยืนยันรหัสผ่านใหม่</label>' +
+          '<input id="swalNewPassConfirm" type="password" class="form-control form-control-sm" placeholder="พิมพ์ซ้ำอีกครั้ง"></div>',
+        showCancelButton: true,
+        confirmButtonText: 'บันทึกรหัสผ่านใหม่',
+        cancelButtonText: 'ยกเลิก',
+        preConfirm: () => {
+          const oldP = document.getElementById('swalOldPass').value;
+          const newP = document.getElementById('swalNewPass').value;
+          const newPC = document.getElementById('swalNewPassConfirm').value;
+          if (!newP || newP.length < 6) {
+            Swal.showValidationMessage('รหัสผ่านใหม่ต้องมีอย่างน้อย 6 ตัวอักษร');
+            return false;
+          }
+          if (newP !== newPC) {
+            Swal.showValidationMessage('รหัสผ่านใหม่ทั้งสองช่องไม่ตรงกัน');
+            return false;
+          }
+          return { oldP, newP };
+        }
+      });
+
+      if (!formValues) return;
+
+      Swal.fire({
+        title: 'กำลังเปลี่ยนรหัสผ่าน...',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+      });
+
+      try {
+        const res = await callApi('changePassword', {
+          oldPassword: formValues.oldP,
+          newPassword: formValues.newP
+        });
+
+        if (res && res.success) {
+          Swal.fire('สำเร็จ', res.message, 'success');
+        } else {
+          Swal.fire('เกิดข้อผิดพลาด', (res && res.message) || 'เปลี่ยนรหัสผ่านไม่สำเร็จ', 'error');
+        }
+      } catch (err) {
+        Swal.fire('เกิดข้อผิดพลาด', err.message, 'error');
+      }
+    }
+
+    // แอดมินตั้ง/รีเซ็ตรหัสผ่านให้พนักงาน
+    async function promptAdminSetPassword(targetUserId, targetName) {
+      const { value: newPass } = await Swal.fire({
+        title: `ตั้งรหัสผ่านใหม่: ${targetName}`,
+        input: 'password',
+        inputLabel: 'กำหนดรหัสผ่านใหม่สำหรับพนักงาน (อย่างน้อย 6 ตัวอักษร)',
+        inputPlaceholder: 'กรอกรหัสผ่านใหม่',
+        showCancelButton: true,
+        confirmButtonText: 'บันทึกรหัสผ่าน',
+        cancelButtonText: 'ยกเลิก',
+        inputValidator: (value) => {
+          if (!value || value.length < 6) {
+            return 'รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร';
+          }
+        }
+      });
+
+      if (!newPass) return;
+
+      Swal.fire({
+        title: 'กำลังบันทึกรหัสผ่าน...',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+      });
+
+      try {
+        const res = await callApi('adminSetPassword', {
+          adminEmail: currentUser.email,
+          targetUserId: targetUserId,
+          newPassword: newPass
+        });
+
+        if (res && res.success) {
+          Swal.fire('สำเร็จ', res.message, 'success');
+          loadUsersManagement();
+        } else {
+          Swal.fire('เกิดข้อผิดพลาด', (res && res.message) || 'ตั้งรหัสผ่านไม่สำเร็จ', 'error');
+        }
+      } catch (err) {
+        Swal.fire('เกิดข้อผิดพลาด', err.message, 'error');
+      }
     }
 
     function populateBranchSelectDropdowns() {
@@ -1135,18 +1601,21 @@
 
       Swal.fire({
         title: 'กำลังตรวจสอบ...',
-        text: 'กำลังบันทึกภาพ พิกัด และเวลาเข้าสู่ระบบ',
+        text: 'กำลังบันทึกภาพ พิกัด อุปกรณ์ และเวลาเข้าสู่ระบบ',
         allowOutsideClick: false,
         didOpen: () => Swal.showLoading()
       });
 
+      const dev = getDeviceInfo();
       const payload = {
         userId: currentUser.userId,
         branchId: currentUser.branchId,
         type: type,
         lat: currentPosition.lat,
         lng: currentPosition.lng,
-        imageBase64: imageBase64
+        imageBase64: imageBase64,
+        deviceName: dev.deviceName,
+        deviceId: dev.deviceId
       };
 
       try {
@@ -1201,11 +1670,14 @@
             statusBadge = '<span class="badge bg-success-subtle text-success">ตรงเวลา</span>';
           }
 
+          const devBadge = l.device ? `<div class="text-secondary small mt-1" style="font-size: 0.72rem;"><i class="fa-solid fa-desktop me-1 text-primary"></i>${l.device}</div>` : '';
+
           html += `
             <li class="list-group-item px-0 py-2 d-flex justify-content-between align-items-center">
               <div>
                 ${typeBadge}
                 <span class="ms-1 text-dark fw-medium">${l.timestamp}</span>
+                ${devBadge}
                 ${l.note ? `<div class="text-secondary small mt-1" style="font-size: 0.75rem;"><i class="fa-solid fa-circle-info me-1"></i>${l.note}</div>` : ''}
               </div>
               <div class="text-end">
@@ -1258,7 +1730,7 @@
       if (!currentUser) return;
       const monthStr = document.getElementById('userDailyMonthPicker').value;
       const tbody = document.getElementById('userDailyTableBody');
-      tbody.innerHTML = `<tr><td colspan="10" class="text-center text-muted py-4"><i class="fa-solid fa-spinner fa-spin me-2"></i>กำลังโหลดตารางสรุปรายวันเดือน ${monthStr}...</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="11" class="text-center text-muted py-4"><i class="fa-solid fa-spinner fa-spin me-2"></i>กำลังโหลดตารางสรุปรายวันเดือน ${monthStr}...</td></tr>`;
 
       try {
         const res = await callApi('getUserDailySummary', {
@@ -1267,14 +1739,14 @@
         });
 
         if (!res || !res.success) {
-          tbody.innerHTML = `<tr><td colspan="10" class="text-center text-danger py-3">${(res && res.message) || 'โหลดข้อมูลสรุปรายวันไม่สำเร็จ'}</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="11" class="text-center text-danger py-3">${(res && res.message) || 'โหลดข้อมูลสรุปรายวันไม่สำเร็จ'}</td></tr>`;
           return;
         }
 
         lastUserDailyResponse = res;
         renderUserDailySummary(res);
       } catch (err) {
-        tbody.innerHTML = `<tr><td colspan="10" class="text-center text-danger py-3">เกิดข้อผิดพลาด: ${err.message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="11" class="text-center text-danger py-3">เกิดข้อผิดพลาด: ${err.message}</td></tr>`;
       }
     }
 
@@ -1300,7 +1772,7 @@
 
       const tbody = document.getElementById('userDailyTableBody');
       if (rows.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="10" class="text-center text-muted py-3">ยังไม่มีข้อมูลรายวันในเดือนนี้</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="11" class="text-center text-muted py-3">ยังไม่มีข้อมูลรายวันในเดือนนี้</td></tr>`;
         return;
       }
 
@@ -1337,6 +1809,13 @@
           photoLinks.push(`<a href="${r.checkOutPhoto}" target="_blank" class="badge bg-danger-subtle text-danger text-decoration-none border"><i class="fa-solid fa-camera me-1"></i>รูปออก</a>`);
         }
 
+        const devDisplay = (r.checkInDevice || r.checkOutDevice) ? `
+          <div class="small" style="max-width: 170px;">
+            ${r.checkInDevice ? `<span class="badge bg-light text-dark border d-block text-truncate mb-1" title="เข้า: ${r.checkInDevice}"><i class="fa-solid fa-arrow-right-to-bracket text-success me-1"></i>${r.checkInDevice}</span>` : ''}
+            ${r.checkOutDevice ? `<span class="badge bg-light text-dark border d-block text-truncate" title="ออก: ${r.checkOutDevice}"><i class="fa-solid fa-arrow-right-from-bracket text-danger me-1"></i>${r.checkOutDevice}</span>` : ''}
+          </div>
+        ` : '<span class="text-muted">-</span>';
+
         html += `
           <tr class="text-center ${rowClass}">
             <td class="fw-medium">${dDate}</td>
@@ -1344,6 +1823,7 @@
             <td>${statusBadge}</td>
             <td class="fw-bold ${r.checkInTime !== '-' ? 'text-success' : 'text-muted'}">${r.checkInTime}</td>
             <td class="fw-bold ${r.checkOutTime !== '-' ? 'text-danger' : 'text-muted'}">${r.checkOutTime}</td>
+            <td>${devDisplay}</td>
             <td>${r.lateMinutes > 0 ? `<span class="badge bg-warning text-dark">${r.lateMinutes} นาที</span>` : '<span class="text-muted">0</span>'}</td>
             <td>${earlyMin > 0 ? `<span class="badge bg-danger text-white">${earlyMin} นาที</span>` : '<span class="text-muted">0</span>'}</td>
             <td>${r.otMinutes > 0 ? `<span class="fw-bold text-primary">${r.otMinutes} นาที</span>` : '<span class="text-muted">0</span>'}</td>
@@ -1376,6 +1856,8 @@
         'สถานะ': r.statusLabel || r.statusText,
         'เวลาเข้างาน': r.checkInTime,
         'เวลาออกงาน': r.checkOutTime,
+        'เครื่องที่สแกน (เข้า)': r.checkInDevice || '',
+        'เครื่องที่สแกน (ออก)': r.checkOutDevice || '',
         'เข้าสาย (นาที)': r.lateMinutes || 0,
         'ออกก่อน (นาที)': r.earlyMinutes ?? r.earlyLeaveMinutes ?? 0,
         'เวลาโอที (นาที)': r.otMinutes || 0,
@@ -1389,6 +1871,8 @@
         'สถานะ': `ลา ${sum.leaveDays || 0} / ขาด ${sum.absentDays || 0} วัน`,
         'เวลาเข้างาน': '',
         'เวลาออกงาน': '',
+        'เครื่องที่สแกน (เข้า)': '',
+        'เครื่องที่สแกน (ออก)': '',
         'เข้าสาย (นาที)': sum.lateMinutes || 0,
         'ออกก่อน (นาที)': sum.earlyMinutes || 0,
         'เวลาโอที (นาที)': sum.otMinutes || 0,
@@ -1400,7 +1884,7 @@
         const ws = XLSX.utils.json_to_sheet(excelData);
         ws['!cols'] = [
           { wch: 15 }, { wch: 12 }, { wch: 22 }, { wch: 14 }, { wch: 14 },
-          { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 35 }
+          { wch: 22 }, { wch: 22 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 35 }
         ];
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, `รายวัน_${monthStr}`);
@@ -1417,7 +1901,7 @@
       const dateStr = document.getElementById('adminDailyDatePicker').value;
       const filterBranchId = document.getElementById('adminDailyBranchFilter').value || 'ALL';
       const tbody = document.getElementById('adminDailyTableBody');
-      tbody.innerHTML = `<tr><td colspan="11" class="text-center text-muted py-4"><i class="fa-solid fa-spinner fa-spin me-2"></i>กำลังโหลดข้อมูลรายวันประจำวันที่ ${dateStr}...</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="12" class="text-center text-muted py-4"><i class="fa-solid fa-spinner fa-spin me-2"></i>กำลังโหลดข้อมูลรายวันประจำวันที่ ${dateStr}...</td></tr>`;
 
       try {
         const res = await callApi('getAdminDailySummary', {
@@ -1427,14 +1911,14 @@
         });
 
         if (!res || !res.success) {
-          tbody.innerHTML = `<tr><td colspan="11" class="text-center text-danger py-3">${(res && res.message) || 'โหลดข้อมูลสรุปรายวันไม่สำเร็จ'}</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="12" class="text-center text-danger py-3">${(res && res.message) || 'โหลดข้อมูลสรุปรายวันไม่สำเร็จ'}</td></tr>`;
           return;
         }
 
         lastAdminDailyResponse = res;
         renderAdminDailySummary(res);
       } catch (err) {
-        tbody.innerHTML = `<tr><td colspan="11" class="text-center text-danger py-3">เกิดข้อผิดพลาด: ${err.message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="12" class="text-center text-danger py-3">เกิดข้อผิดพลาด: ${err.message}</td></tr>`;
       }
     }
 
@@ -1460,7 +1944,7 @@
 
       const tbody = document.getElementById('adminDailyTableBody');
       if (rows.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="11" class="text-center text-muted py-3">ไม่พบรายชื่อพนักงานตามเงื่อนไขที่เลือก</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="12" class="text-center text-muted py-3">ไม่พบรายชื่อพนักงานตามเงื่อนไขที่เลือก</td></tr>`;
         return;
       }
 
@@ -1498,6 +1982,21 @@
           ? `<div class="mt-1"><a href="${r.checkOutPhoto}" target="_blank" class="badge bg-danger-subtle text-danger text-decoration-none border"><i class="fa-solid fa-image me-1"></i>ดูรูปออก</a></div>`
           : '';
 
+        const devDisplay = (r.checkInDevice || r.checkOutDevice) ? `
+          <div class="small" style="max-width: 190px;">
+            ${r.checkInDevice ? `<span class="badge bg-light text-dark border d-block text-truncate mb-1" title="เข้า: ${r.checkInDevice}"><i class="fa-solid fa-arrow-right-to-bracket text-success me-1"></i>${r.checkInDevice}</span>` : ''}
+            ${r.checkOutDevice ? `<span class="badge bg-light text-dark border d-block text-truncate" title="ออก: ${r.checkOutDevice}"><i class="fa-solid fa-arrow-right-from-bracket text-danger me-1"></i>${r.checkOutDevice}</span>` : ''}
+          </div>
+        ` : '<span class="text-muted">-</span>';
+
+        const sharedWarning = (r.sharedDeviceWith && r.sharedDeviceWith.length > 0) ? `
+          <div class="mt-1">
+            <span class="badge bg-warning-subtle text-warning-emphasis border border-warning" title="เครื่องซ้ำกับ: ${r.sharedDeviceWith.join(', ')}">
+              <i class="fa-solid fa-triangle-exclamation me-1"></i>เครื่องซ้ำ (${r.sharedDeviceWith.length} คน)
+            </span>
+          </div>
+        ` : '';
+
         html += `
           <tr class="text-center ${rowClass}">
             <td class="text-start">
@@ -1516,6 +2015,10 @@
             <td>
               <span class="fw-bold ${r.checkOutTime !== '-' ? 'text-danger' : 'text-muted'}">${r.checkOutTime}</span>
               ${outPhotoBtn}
+            </td>
+            <td>
+              ${devDisplay}
+              ${sharedWarning}
             </td>
             <td>${r.lateMinutes > 0 ? `<span class="badge bg-warning text-dark">${r.lateMinutes} นาที</span>` : '<span class="text-muted">0</span>'}</td>
             <td>${earlyMin > 0 ? `<span class="badge bg-danger text-white">${earlyMin} นาที</span>` : '<span class="text-muted">0</span>'}</td>
@@ -1553,6 +2056,9 @@
         'สถานะวันนี้': r.dayStatusLabel || r.attendanceText,
         'เวลาสแกนเข้า': r.checkInTime,
         'เวลาสแกนออก': r.checkOutTime,
+        'เครื่องสแกนเข้า': r.checkInDevice || '',
+        'เครื่องสแกนออก': r.checkOutDevice || '',
+        'ใช้เครื่องซ้ำกับ': (r.sharedDeviceWith || []).join(', '),
         'เข้าสาย (นาที)': r.lateMinutes || 0,
         'ออกก่อน (นาที)': r.earlyMinutes ?? r.earlyLeaveMinutes ?? 0,
         'ค่าโอที/ชม. (บาท)': Number(r.otRatePerHour || 0),
@@ -1572,6 +2078,9 @@
         'สถานะวันนี้': '',
         'เวลาสแกนเข้า': '',
         'เวลาสแกนออก': '',
+        'เครื่องสแกนเข้า': '',
+        'เครื่องสแกนออก': '',
+        'ใช้เครื่องซ้ำกับ': '',
         'เข้าสาย (นาที)': sum.totalLateMinutes || 0,
         'ออกก่อน (นาที)': '',
         'ค่าโอที/ชม. (บาท)': '',
@@ -1585,8 +2094,9 @@
         const ws = XLSX.utils.json_to_sheet(excelData);
         ws['!cols'] = [
           { wch: 7 }, { wch: 13 }, { wch: 13 }, { wch: 24 }, { wch: 22 },
-          { wch: 15 }, { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 15 },
-          { wch: 15 }, { wch: 18 }, { wch: 16 }, { wch: 16 }, { wch: 20 }, { wch: 32 }
+          { wch: 15 }, { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 20 },
+          { wch: 20 }, { wch: 24 }, { wch: 15 }, { wch: 15 }, { wch: 18 },
+          { wch: 16 }, { wch: 16 }, { wch: 20 }, { wch: 32 }
         ];
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, `รายวัน_${dateStr}`);
@@ -1875,7 +2385,7 @@
       // 2. ตารางจัดการสิทธิ์และตั้งค่าโอทีต่อชั่วโมงของพนักงานทั้งหมด
       const allTbody = document.getElementById('allUsersManageTableBody');
       if (users.length === 0) {
-        allTbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted py-3">ไม่พบข้อมูลพนักงาน</td></tr>`;
+        allTbody.innerHTML = `<tr><td colspan="9" class="text-center text-muted py-3">ไม่พบข้อมูลพนักงาน</td></tr>`;
         return;
       }
 
@@ -1922,6 +2432,14 @@
             </td>
             <td>
               <span id="previewOtMin_${u.userId}" class="badge bg-light text-secondary border">${otMinFormatted} ฿/นาที</span>
+            </td>
+            <td>
+              ${u.hasPassword 
+                ? '<span class="badge bg-success-subtle text-success border border-success-subtle mb-1 d-block"><i class="fa-solid fa-check me-1"></i>ตั้งแล้ว</span>' 
+                : '<span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle mb-1 d-block"><i class="fa-solid fa-triangle-exclamation me-1"></i>ยังไม่ตั้ง</span>'}
+              <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" style="font-size: 0.72rem;" onclick="promptAdminSetPassword('${u.userId}', '${safeName}')">
+                <i class="fa-solid fa-key me-1"></i>รีเซ็ต
+              </button>
             </td>
             <td>
               <button class="btn btn-primary btn-sm px-3 fw-bold" onclick="saveUserPermissionRow('${u.userId}', '${safeName}')">
@@ -2250,9 +2768,21 @@
       const email = document.getElementById('regEmail').value.trim();
       const name = document.getElementById('regName').value.trim();
       const branchId = document.getElementById('regBranch').value;
+      const pwd = document.getElementById('regPassword') ? document.getElementById('regPassword').value : '';
+      const pwdConfirm = document.getElementById('regPasswordConfirm') ? document.getElementById('regPasswordConfirm').value : '';
 
       if (!email || !name) {
         Swal.fire('ข้อมูลไม่ครบถ้วน', 'กรุณาระบุอีเมลและชื่อ-นามสกุล', 'warning');
+        return;
+      }
+
+      if (!pwd || pwd.length < 6) {
+        Swal.fire('รหัสผ่านสั้นเกินไป', 'กรุณากำหนดรหัสผ่านอย่างน้อย 6 ตัวอักษร', 'warning');
+        return;
+      }
+
+      if (pwd !== pwdConfirm) {
+        Swal.fire('รหัสผ่านไม่ตรงกัน', 'กรุณายืนยันรหัสผ่านให้ตรงกันทั้งสองช่อง', 'warning');
         return;
       }
 
@@ -2263,9 +2793,19 @@
       });
 
       try {
-        const res = await callApi('registerUser', { name: name, branchId: branchId, email: email });
+        const res = await callApi('registerUser', {
+          name: name,
+          branchId: branchId,
+          email: email,
+          password: pwd
+        });
+
         if (res.success) {
           localStorage.setItem("attendance_user_email", email);
+          if (res.sessionToken) {
+            sessionToken = res.sessionToken;
+            localStorage.setItem("attendance_session_token", res.sessionToken);
+          }
           Swal.fire({
             icon: 'info',
             title: 'ลงทะเบียนสำเร็จ (รออนุมัติ)',
@@ -2320,19 +2860,25 @@
       }
     }
 
-    // สลับบัญชี
+    // ออกจากระบบ / สลับบัญชี
     function logoutUser() {
       Swal.fire({
-        title: 'สลับบัญชีผู้ใช้?',
-        text: 'คุณต้องการเปลี่ยนผู้ใช้งานในเครื่องนี้หรือไม่',
+        title: 'ออกจากระบบ / สลับบัญชี?',
+        text: 'คุณต้องการออกจากระบบในเครื่องนี้หรือไม่',
         icon: 'question',
         showCancelButton: true,
-        confirmButtonText: 'ใช่, สลับบัญชี',
+        confirmButtonText: 'ใช่, ออกจากระบบ',
         cancelButtonText: 'ยกเลิก'
       }).then((result) => {
         if (result.isConfirmed) {
+          if (sessionToken) {
+            callApi('logoutSession', { token: sessionToken }).catch(() => {});
+          }
+          sessionToken = null;
+          currentUser = null;
           localStorage.removeItem("attendance_user_email");
-          location.reload();
+          localStorage.removeItem("attendance_session_token");
+          showLoginSection();
         }
       });
     }
