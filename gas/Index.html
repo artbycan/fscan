@@ -1331,9 +1331,12 @@
     }
 
     function renderUserDailySummary(res) {
-      const uInfo = res.userInfo || {};
+      const uInfo = res.user || res.userInfo || {};
       const sum = res.summary || {};
       const rows = res.dailyRows || [];
+      const otHrs = Math.floor((sum.otMinutes || 0) / 60);
+      const otRemMins = (sum.otMinutes || 0) % 60;
+      const otHoursText = otHrs > 0 ? `${otHrs} ชม. ${otRemMins} นาที` : `${otRemMins} นาที`;
 
       document.getElementById('userDailySubTitle').innerText =
         `พนักงาน: ${uInfo.name || ''} (${uInfo.userId || ''}) | สาขา: ${uInfo.branchName || ''} (${uInfo.workStart || ''}-${uInfo.workEnd || ''}) | ค่าโอที: ${Number(uInfo.otRatePerHour || 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท/ชม. (${Number(uInfo.otRatePerMinute || 0).toFixed(2)} บาท/นาที)`;
@@ -1344,7 +1347,7 @@
       document.getElementById('uSumLateMins').innerText = sum.lateMinutes ?? 0;
       document.getElementById('uSumLateCount').innerText = `นาที (${sum.lateCount ?? 0} ครั้ง)`;
       document.getElementById('uSumOtMins').innerText = sum.otMinutes ?? 0;
-      document.getElementById('uSumOtText').innerText = `นาที (${sum.otHoursText || '0 นาที'})`;
+      document.getElementById('uSumOtText').innerText = `นาที (${otHoursText})`;
       document.getElementById('uSumOtPay').innerText = Number(sum.otPayBaht || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
       const tbody = document.getElementById('userDailyTableBody');
@@ -1355,21 +1358,26 @@
 
       let html = '';
       rows.forEach(r => {
+        const sCode = r.statusCode || r.status || '';
+        const sLabel = r.statusLabel || r.statusText || '';
+        const dDate = r.dateStr || r.date || '';
+        const earlyMin = r.earlyMinutes ?? r.earlyLeaveMinutes ?? 0;
+
         let statusBadge = '';
         let rowClass = '';
-        if (r.status === 'ONTIME') {
-          statusBadge = '<span class="badge bg-success-subtle text-success border border-success-subtle">มาปกติ</span>';
-        } else if (r.status === 'LATE') {
-          statusBadge = '<span class="badge bg-warning text-dark">มาสาย</span>';
+        if (sCode === 'PRESENT' || sCode === 'ONTIME') {
+          statusBadge = '<span class="badge bg-success-subtle text-success border border-success-subtle">มาทำงานปกติ</span>';
+        } else if (sCode === 'LATE') {
+          statusBadge = `<span class="badge bg-warning text-dark">${sLabel || 'มาสาย'}</span>`;
           rowClass = 'bg-warning-subtle bg-opacity-10';
-        } else if (r.status === 'LEAVE') {
-          statusBadge = `<span class="badge bg-info-subtle text-info-emphasis border border-info-subtle">${r.statusText}</span>`;
+        } else if (sCode === 'LEAVE') {
+          statusBadge = `<span class="badge bg-info-subtle text-info-emphasis border border-info-subtle">${sLabel}</span>`;
           rowClass = 'bg-info-subtle bg-opacity-10';
-        } else if (r.status === 'ABSENT') {
+        } else if (sCode === 'ABSENT') {
           statusBadge = '<span class="badge bg-danger-subtle text-danger border border-danger-subtle">ขาดงาน</span>';
           rowClass = 'bg-danger-subtle bg-opacity-10';
         } else {
-          statusBadge = `<span class="badge bg-light text-secondary border">${r.statusText}</span>`;
+          statusBadge = `<span class="badge bg-light text-secondary border">${sLabel}</span>`;
           rowClass = 'text-muted bg-light';
         }
 
@@ -1383,13 +1391,13 @@
 
         html += `
           <tr class="text-center ${rowClass}">
-            <td class="fw-medium">${r.date}</td>
+            <td class="fw-medium">${dDate}</td>
             <td>${r.dayName}</td>
             <td>${statusBadge}</td>
             <td class="fw-bold ${r.checkInTime !== '-' ? 'text-success' : 'text-muted'}">${r.checkInTime}</td>
             <td class="fw-bold ${r.checkOutTime !== '-' ? 'text-danger' : 'text-muted'}">${r.checkOutTime}</td>
             <td>${r.lateMinutes > 0 ? `<span class="badge bg-warning text-dark">${r.lateMinutes} นาที</span>` : '<span class="text-muted">0</span>'}</td>
-            <td>${r.earlyLeaveMinutes > 0 ? `<span class="badge bg-danger text-white">${r.earlyLeaveMinutes} นาที</span>` : '<span class="text-muted">0</span>'}</td>
+            <td>${earlyMin > 0 ? `<span class="badge bg-danger text-white">${earlyMin} นาที</span>` : '<span class="text-muted">0</span>'}</td>
             <td>${r.otMinutes > 0 ? `<span class="fw-bold text-primary">${r.otMinutes} นาที</span>` : '<span class="text-muted">0</span>'}</td>
             <td class="bg-warning-subtle fw-bold text-dark">${Number(r.otPayBaht || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</td>
             <td class="text-start small">
@@ -1409,20 +1417,20 @@
         return;
       }
 
-      const uInfo = lastUserDailyResponse.userInfo || {};
+      const uInfo = lastUserDailyResponse.user || lastUserDailyResponse.userInfo || {};
       const monthStr = lastUserDailyResponse.monthStr || document.getElementById('userDailyMonthPicker').value;
       const rows = lastUserDailyResponse.dailyRows;
       const sum = lastUserDailyResponse.summary || {};
 
       const excelData = rows.map(r => ({
-        'วันที่': r.date,
+        'วันที่': r.dateStr || r.date,
         'วัน': r.dayName,
-        'สถานะ': r.statusText,
+        'สถานะ': r.statusLabel || r.statusText,
         'เวลาเข้างาน': r.checkInTime,
         'เวลาออกงาน': r.checkOutTime,
-        'เข้าสาย (นาที)': r.lateMinutes,
-        'ออกก่อน (นาที)': r.earlyLeaveMinutes,
-        'เวลาโอที (นาที)': r.otMinutes,
+        'เข้าสาย (นาที)': r.lateMinutes || 0,
+        'ออกก่อน (นาที)': r.earlyMinutes ?? r.earlyLeaveMinutes ?? 0,
+        'เวลาโอที (นาที)': r.otMinutes || 0,
         'ค่าโอที (บาท)': Number(r.otPayBaht || 0),
         'หมายเหตุ': r.note || ''
       }));
@@ -1434,10 +1442,10 @@
         'เวลาเข้างาน': '',
         'เวลาออกงาน': '',
         'เข้าสาย (นาที)': sum.lateMinutes || 0,
-        'ออกก่อน (นาที)': sum.earlyLeaveMinutes || 0,
+        'ออกก่อน (นาที)': sum.earlyMinutes || 0,
         'เวลาโอที (นาที)': sum.otMinutes || 0,
         'ค่าโอที (บาท)': Number(sum.otPayBaht || 0),
-        'หมายเหตุ': sum.otHoursText || ''
+        'หมายเหตุ': ''
       });
 
       if (typeof XLSX !== 'undefined') {
@@ -1474,11 +1482,14 @@
     }
 
     function renderAdminDailySummary(res) {
-      const sum = res.summary || {};
-      const rows = res.rows || [];
+      const sum = res.totals || res.summary || {};
+      const rows = res.staffDailyRows || res.rows || [];
+      const otHrs = Math.floor((sum.totalOtMinutes || 0) / 60);
+      const otRemMins = (sum.totalOtMinutes || 0) % 60;
+      const totalOtHoursText = otHrs > 0 ? `${otHrs} ชม. ${otRemMins} นาที` : `${otRemMins} นาที`;
 
       document.getElementById('adminDailySubTitle').innerText =
-        `ข้อมูลประจำวัน${res.dayName || ''}ที่ ${res.dateStr || ''} | พนักงานทั้งหมดในรายการ: ${sum.totalUsers || 0} คน`;
+        `ข้อมูลประจำวันที่ ${res.dateStr || ''} | พนักงานทั้งหมดในรายการ: ${sum.totalStaff ?? sum.totalUsers ?? rows.length} คน`;
 
       document.getElementById('aDailyPresent').innerText = sum.presentCount ?? 0;
       document.getElementById('aDailyOnTimeSub').innerText = `คน (ตรงเวลา ${sum.onTimeCount ?? 0} คน)`;
@@ -1487,7 +1498,7 @@
       document.getElementById('aDailyLeave').innerText = sum.leaveCount ?? 0;
       document.getElementById('aDailyAbsent').innerText = sum.absentCount ?? 0;
       document.getElementById('aDailyOtMins').innerText = sum.totalOtMinutes ?? 0;
-      document.getElementById('aDailyOtText').innerText = `นาที (${sum.totalOtHoursText || '0 นาที'})`;
+      document.getElementById('aDailyOtText').innerText = `นาที (${totalOtHoursText})`;
       document.getElementById('aDailyOtPay').innerText = Number(sum.totalOtPayBaht || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
       const tbody = document.getElementById('adminDailyTableBody');
@@ -1498,42 +1509,47 @@
 
       let html = '';
       rows.forEach(r => {
+        const sCode = r.dayStatusCode || r.attendanceStatus || '';
+        const sLabel = r.dayStatusLabel || r.attendanceText || '';
+        const earlyMin = r.earlyMinutes ?? r.earlyLeaveMinutes ?? 0;
+        const scheduleText = r.workSchedule || `${r.workStart || '08:30'}-${r.workEnd || '17:30'}`;
+
         let statusBadge = '';
         let rowClass = '';
-        if (r.attendanceStatus === 'ONTIME') {
+        if (sCode === 'ONTIME') {
           statusBadge = '<span class="badge bg-success-subtle text-success border border-success-subtle">มาตรงเวลา</span>';
-        } else if (r.attendanceStatus === 'LATE') {
-          statusBadge = '<span class="badge bg-warning text-dark">มาสาย</span>';
+        } else if (sCode === 'LATE') {
+          statusBadge = `<span class="badge bg-warning text-dark">${sLabel || 'มาสาย'}</span>`;
           rowClass = 'bg-warning-subtle bg-opacity-10';
-        } else if (r.attendanceStatus === 'LEAVE') {
-          statusBadge = `<span class="badge bg-info-subtle text-info-emphasis border border-info-subtle">${r.attendanceText}</span>`;
+        } else if (sCode === 'LEAVE') {
+          statusBadge = `<span class="badge bg-info-subtle text-info-emphasis border border-info-subtle">${sLabel}</span>`;
           rowClass = 'bg-info-subtle bg-opacity-10';
-        } else if (r.attendanceStatus === 'ABSENT') {
-          statusBadge = `<span class="badge bg-danger-subtle text-danger border border-danger-subtle">${r.attendanceText}</span>`;
+        } else if (sCode === 'ABSENT') {
+          statusBadge = `<span class="badge bg-danger-subtle text-danger border border-danger-subtle">${sLabel}</span>`;
           rowClass = 'bg-danger-subtle bg-opacity-10';
-        } else if (r.attendanceStatus === 'INACTIVE') {
+        } else if (sCode === 'INACTIVE') {
           statusBadge = '<span class="badge bg-secondary">รออนุมัติ (INACTIVE)</span>';
           rowClass = 'text-muted bg-light';
         } else {
-          statusBadge = `<span class="badge bg-light text-secondary border">${r.attendanceText}</span>`;
+          statusBadge = `<span class="badge bg-light text-secondary border">${sLabel}</span>`;
         }
 
         const inPhotoBtn = r.checkInPhoto
-          ? `<div class="mt-1"><a href="${r.checkInPhoto}" target="_blank" class="badge bg-success-subtle text-success text-decoration-none border"><i class="fa-solid fa-image me-1"></i>ดูรูปเข้า (${r.checkInDist}ม.)</a></div>`
+          ? `<div class="mt-1"><a href="${r.checkInPhoto}" target="_blank" class="badge bg-success-subtle text-success text-decoration-none border"><i class="fa-solid fa-image me-1"></i>ดูรูปเข้า</a></div>`
           : '';
         const outPhotoBtn = r.checkOutPhoto
-          ? `<div class="mt-1"><a href="${r.checkOutPhoto}" target="_blank" class="badge bg-danger-subtle text-danger text-decoration-none border"><i class="fa-solid fa-image me-1"></i>ดูรูปออก (${r.checkOutDist}ม.)</a></div>`
+          ? `<div class="mt-1"><a href="${r.checkOutPhoto}" target="_blank" class="badge bg-danger-subtle text-danger text-decoration-none border"><i class="fa-solid fa-image me-1"></i>ดูรูปออก</a></div>`
           : '';
 
         html += `
           <tr class="text-center ${rowClass}">
             <td class="text-start">
               <div class="fw-bold text-dark">${r.name}</div>
-              <small class="text-muted">${r.userId} | ${r.role.toUpperCase()}</small>
+              <small class="text-muted">${r.userId} | ${(r.role || '').toUpperCase()}</small>
             </td>
             <td>
               <span class="badge bg-light text-dark border">${r.branchName}</span>
-              <div class="text-muted" style="font-size: 0.7rem;">${r.workStart}-${r.workEnd} น.</div>
+              <div class="text-muted" style="font-size: 0.7rem;">${scheduleText} น.</div>
             </td>
             <td>${statusBadge}</td>
             <td>
@@ -1545,7 +1561,7 @@
               ${outPhotoBtn}
             </td>
             <td>${r.lateMinutes > 0 ? `<span class="badge bg-warning text-dark">${r.lateMinutes} นาที</span>` : '<span class="text-muted">0</span>'}</td>
-            <td>${r.earlyLeaveMinutes > 0 ? `<span class="badge bg-danger text-white">${r.earlyLeaveMinutes} นาที</span>` : '<span class="text-muted">0</span>'}</td>
+            <td>${earlyMin > 0 ? `<span class="badge bg-danger text-white">${earlyMin} นาที</span>` : '<span class="text-muted">0</span>'}</td>
             <td>
               <div>${Number(r.otRatePerHour || 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })} ฿</div>
               <small class="text-muted" style="font-size: 0.7rem;">(${Number(r.otRatePerMinute || 0).toFixed(2)} ฿/นาที)</small>
@@ -1561,14 +1577,14 @@
     }
 
     function exportAdminDailyToExcel() {
-      if (!lastAdminDailyResponse || !lastAdminDailyResponse.rows || lastAdminDailyResponse.rows.length === 0) {
+      const rows = lastAdminDailyResponse && (lastAdminDailyResponse.staffDailyRows || lastAdminDailyResponse.rows);
+      if (!rows || rows.length === 0) {
         Swal.fire('ยังไม่มีข้อมูลสำหรับส่งออก', 'กรุณารอให้ตารางสรุปรายวันโหลดเสร็จก่อน', 'warning');
         return;
       }
 
       const dateStr = lastAdminDailyResponse.dateStr || document.getElementById('adminDailyDatePicker').value;
-      const rows = lastAdminDailyResponse.rows;
-      const sum = lastAdminDailyResponse.summary || {};
+      const sum = lastAdminDailyResponse.totals || lastAdminDailyResponse.summary || {};
 
       const excelData = rows.map((r, idx) => ({
         'ลำดับ': idx + 1,
@@ -1576,15 +1592,15 @@
         'รหัสพนักงาน': r.userId,
         'ชื่อ-นามสกุล': r.name,
         'สาขา': r.branchName,
-        'เวลาเข้า-ออกสาขา': `${r.workStart}-${r.workEnd}`,
-        'สถานะวันนี้': r.attendanceText,
+        'เวลาเข้า-ออกสาขา': r.workSchedule || `${r.workStart || ''}-${r.workEnd || ''}`,
+        'สถานะวันนี้': r.dayStatusLabel || r.attendanceText,
         'เวลาสแกนเข้า': r.checkInTime,
         'เวลาสแกนออก': r.checkOutTime,
-        'เข้าสาย (นาที)': r.lateMinutes,
-        'ออกก่อน (นาที)': r.earlyLeaveMinutes,
+        'เข้าสาย (นาที)': r.lateMinutes || 0,
+        'ออกก่อน (นาที)': r.earlyMinutes ?? r.earlyLeaveMinutes ?? 0,
         'ค่าโอที/ชม. (บาท)': Number(r.otRatePerHour || 0),
         'โอที/นาที (บาท)': Number(Number(r.otRatePerMinute || 0).toFixed(4)),
-        'เวลาโอที (นาที)': r.otMinutes,
+        'เวลาโอที (นาที)': r.otMinutes || 0,
         'เงินค่าโอทีวันนี้ (บาท)': Number(r.otPayBaht || 0),
         'หมายเหตุ': r.note || ''
       }));
@@ -1600,12 +1616,12 @@
         'เวลาสแกนเข้า': '',
         'เวลาสแกนออก': '',
         'เข้าสาย (นาที)': sum.totalLateMinutes || 0,
-        'ออกก่อน (นาที)': sum.totalEarlyLeaveMinutes || 0,
+        'ออกก่อน (นาที)': '',
         'ค่าโอที/ชม. (บาท)': '',
         'โอที/นาที (บาท)': '',
         'เวลาโอที (นาที)': sum.totalOtMinutes || 0,
         'เงินค่าโอทีวันนี้ (บาท)': Number(sum.totalOtPayBaht || 0),
-        'หมายเหตุ': sum.totalOtHoursText || ''
+        'หมายเหตุ': ''
       });
 
       if (typeof XLSX !== 'undefined') {

@@ -1317,6 +1317,8 @@ function getUserDailySummary(userId, monthStr) {
         dailyLogs[dateStr] = {
           checkInTime: "",
           checkOutTime: "",
+          checkInPhoto: "",
+          checkOutPhoto: "",
           checkInStatus: "",
           checkOutStatus: "",
           lateMinutes: 0,
@@ -1328,18 +1330,21 @@ function getUserDailySummary(userId, monthStr) {
 
       var dLog = dailyLogs[dateStr];
       var lType = row[3];
+      var lPhoto = row[6] ? row[6].toString() : "";
       var lStatus = row[7];
       var lNote = row[8] ? row[8].toString() : "";
 
       if (lType === "CHECK_IN") {
         if (!dLog.checkInTime) {
           dLog.checkInTime = timeStr;
+          dLog.checkInPhoto = lPhoto;
           dLog.checkInStatus = lStatus;
           dLog.lateMinutes = extractLateMinutesFromRow(row);
           if (lNote) dLog.notes.push(lNote);
         }
       } else if (lType === "CHECK_OUT") {
         dLog.checkOutTime = timeStr;
+        dLog.checkOutPhoto = lPhoto;
         dLog.checkOutStatus = lStatus;
         dLog.otMinutes = Number(row[9]) || 0;
         dLog.earlyMinutes = Number(row[10]) || 0;
@@ -1478,6 +1483,8 @@ function getUserDailySummary(userId, monthStr) {
         statusLabel: statusLabel,
         checkInTime: checkInTime,
         checkOutTime: checkOutTime,
+        checkInPhoto: logItem ? (logItem.checkInPhoto || "") : "",
+        checkOutPhoto: logItem ? (logItem.checkOutPhoto || "") : "",
         lateMinutes: lateMin,
         earlyMinutes: earlyMin,
         otMinutes: otMinVal,
