@@ -152,7 +152,7 @@
               <i class="fa-solid fa-key me-1"></i>เปลี่ยนรหัสผ่าน
             </a>
             <span class="text-muted" style="font-size: 0.7rem;">|</span>
-            <a href="javascript:void(0)" onclick="logoutUser()" class="text-muted small text-decoration-none" style="font-size: 0.75rem;">
+            <a href="javascript:void(0)" id="switchAccBtn" onclick="logoutUser()" class="text-muted small text-decoration-none" style="font-size: 0.75rem;">
               <i class="fa-solid fa-right-from-bracket me-1"></i>ออกจากระบบ
             </a>
           </div>
@@ -1483,7 +1483,11 @@
           statusBadge.innerText = userStatus;
           statusBadge.className = 'badge badge-status ms-1 ' + (userStatus === 'ACTIVE' ? 'bg-success' : 'bg-warning text-dark');
 
-          document.getElementById('switchAccBtn').style.display = 'block';
+          const actionsBar = document.getElementById('userActionsBar');
+          if (actionsBar) actionsBar.style.display = 'inline-block';
+          const switchBtn = document.getElementById('switchAccBtn');
+          if (switchBtn) switchBtn.style.display = 'block';
+
           document.getElementById('loginSection').style.display = 'none';
           document.getElementById('registerSection').style.display = 'none';
 
@@ -1519,7 +1523,12 @@
           document.getElementById('userEmail').innerText = email;
           document.getElementById('regEmail').value = email;
           document.getElementById('userStatusBadge').style.display = 'none';
-          document.getElementById('switchAccBtn').style.display = 'block';
+
+          const actionsBar = document.getElementById('userActionsBar');
+          if (actionsBar) actionsBar.style.display = 'none';
+          const switchBtn = document.getElementById('switchAccBtn');
+          if (switchBtn) switchBtn.style.display = 'none';
+
           document.getElementById('loginSection').style.display = 'none';
           document.getElementById('mainSection').style.display = 'none';
           document.getElementById('pendingApprovalSection').style.display = 'none';
