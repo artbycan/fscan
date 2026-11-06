@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Camera Direct Test</title>
+</head>
+<body style="font-family: sans-serif; padding: 20px;">
+  <h2>Camera Direct Test on Localhost</h2>
+  <video id="v" autoplay playsinline style="width: 400px; height: 300px; background: #000;"></video>
+  <br><br>
+  <button id="btn" style="padding: 10px 20px; font-size: 16px;">กดเพื่อเปิดกล้อง (Test UserMedia)</button>
+  <div id="log" style="margin-top: 20px; white-space: pre-wrap; font-family: monospace;"></div>
+
+  <script>
+    function log(msg) {
+      document.getElementById('log').textContent += msg + '\n';
+      console.log(msg);
+    }
+
+    async function tryOpen(constraints, label) {
+      log('--- ทดสอบ: ' + label + ' ---');
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        log('✅ สำเร็จ! เปิดกล้องได้: ' + stream.getVideoTracks()[0].label);
+        document.getElementById('v').srcObject = stream;
+        return true;
+      } catch (e) {
+        log('❌ ล้มเหลว: ' + e.name + ' - ' + e.message);
+        return false;
+      }
+    }
+
+    document.getElementById('btn').onclick = async () => {
+      document.getElementById('log').textContent = '';
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        log('❌ navigator.mediaDevices.getUserMedia is undefined');
+        return;
+      }
+      
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = devices.filter(d => d.kind === 'videoinput');
+      log('พบกล้อง ' + videoDevices.length + ' ตัว: ' + videoDevices.map(d => d.label || d.deviceId).join(', '));
+
+      // ทดสอบ 1: { video: true }
+      let ok = await tryOpen({ video: true }, '{ video: true }');
+      if (!ok) {
+        // ทดสอบ 2: { video: { facingMode: "user" } }
+        await tryOpen({ video: { facingMode: 'user' } }, '{ video: { facingMode: "user" } }');
+      }
+    };
+  </script>
+</body>
+</html>

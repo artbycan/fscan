@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <title>ระบบลงเวลาเข้า-ออกงานและจัดการการลา</title>
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Font Awesome Icons -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <!-- Google Fonts: Sarabun -->
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    * {
+      font-family: 'Sarabun', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    body {
+      background-color: #f0f2f5;
+      min-height: 100vh;
+    }
+    .card-main {
+      border-radius: 18px;
+      border: none;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.06);
+    }
+    .camera-box {
+      position: relative;
+      width: 100%;
+      max-width: 380px;
+      height: 270px;
+      margin: 0 auto;
+      border-radius: 16px;
+      overflow: hidden;
+      background: #111;
+      border: 3px solid #e9ecef;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+    #video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1); /* กลับด้านภาพให้เหมือนกระจก */
+    }
+    #photoPreview {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: none;
+    }
+    #cameraPlaceholder {
+      color: #fff;
+      text-align: center;
+      padding: 15px;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .retake-badge {
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.7);
+      color: #fff;
+      padding: 4px 14px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      pointer-events: none;
+    }
+    #canvas {
+      display: none;
+    }
+    .badge-status {
+      font-size: 0.8rem;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-weight: 600;
+    }
+    .nav-pills .nav-link {
+      border-radius: 12px;
+      color: #6c757d;
+      padding: 10px;
+    }
+    .nav-pills .nav-link.active {
+      background-color: #0d6efd;
+      color: #fff;
+    }
+  </style>
+</head>
+<body class="py-4">
+  <div class="container" style="max-width: 480px;">
+    
+    <!-- ส่วนข้อมูลโปรไฟล์ผู้ใช้ -->
+    <div class="card card-main p-3 mb-3 bg-white">
+      <div class="d-flex align-items-center justify-content-between">
+        <div class="d-flex align-items-center gap-3">
+          <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center shadow-sm" style="width: 48px; height: 48px; font-size: 20px;">
+            <i class="fa-solid fa-user"></i>
+          </div>
+          <div>
+            <h6 class="mb-0 fw-bold" id="userName">กำลังโหลดข้อมูล...</h6>
+            <small class="text-muted" id="userEmail">กำลังตรวจสอบบัญชี...</small>
+          </div>
+        </div>
+        <div class="text-end">
+          <span class="badge bg-secondary badge-status" id="userRole">-</span>
+          <div class="mt-1" id="switchAccBtn" style="display: none;">
+            <a href="javascript:void(0)" onclick="logoutUser()" class="text-muted small text-decoration-none" style="font-size: 0.75rem;">
+              <i class="fa-solid fa-right-from-bracket me-1"></i>สลับบัญชี
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ฟอร์มลงทะเบียนพนักงานใหม่ (แสดงเมื่อยังไม่มีข้อมูลใน Sheet Users) -->
+    <div id="registerSection" class="card card-main p-4 mb-3 bg-white" style="display: none;">
+      <div class="text-center mb-3">
+        <div class="rounded-circle bg-primary-subtle text-primary d-inline-flex align-items-center justify-content-center mb-2" style="width: 56px; height: 56px; font-size: 24px;">
+          <i class="fa-solid fa-address-card"></i>
+        </div>
+        <h5 class="fw-bold text-dark mb-1">ลงทะเบียนเข้าใช้งาน</h5>
+        <p class="text-muted small mb-0">กรุณากรอกข้อมูลเพื่อสร้างประวัติพนักงานในระบบ</p>
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label fw-bold small text-secondary">อีเมล Gmail <span class="text-danger">*</span></label>
+        <div class="input-group">
+          <span class="input-group-text bg-light"><i class="fa-solid fa-envelope text-muted"></i></span>
+          <input type="email" id="regEmail" class="form-control" placeholder="name@gmail.com" required readonly>
+        </div>
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label fw-bold small text-secondary">ชื่อ - นามสกุล <span class="text-danger">*</span></label>
+        <div class="input-group">
+          <span class="input-group-text bg-light"><i class="fa-solid fa-user text-muted"></i></span>
+          <input type="text" id="regName" class="form-control" placeholder="เช่น ณัฐภาห์ โชติวริสสิท" required>
+        </div>
+      </div>
+
+      <div class="mb-4">
+        <label class="form-label fw-bold small text-secondary">สาขาประจำการ <span class="text-danger">*</span></label>
+        <div class="input-group">
+          <span class="input-group-text bg-light"><i class="fa-solid fa-building text-muted"></i></span>
+          <select id="regBranch" class="form-select"></select>
+        </div>
+      </div>
+
+      <button class="btn btn-primary w-100 py-2 fw-bold shadow-sm" onclick="submitRegister()">
+        <i class="fa-solid fa-check me-1"></i> ยืนยันการลงทะเบียน
+      </button>
+    </div>
+
+    <!-- หน้าต่างหลักเมื่อเข้าสู่ระบบเรียบร้อยแล้ว -->
+    <div id="mainSection" style="display: none;">
+      <ul class="nav nav-pills nav-fill mb-3 bg-white p-1 rounded-4 shadow-sm" id="pills-tab">
+        <li class="nav-item">
+          <button class="nav-link active fw-bold" data-bs-toggle="pill" data-bs-target="#tab-attendance">
+            <i class="fa-solid fa-fingerprint me-2"></i>ลงเวลา
+          </button>
+        </li>
+        <li class="nav-item">
+          <button class="nav-link fw-bold" data-bs-toggle="pill" data-bs-target="#tab-leave">
+            <i class="fa-solid fa-envelope-open-text me-2"></i>แจ้งลางาน
+          </button>
+        </li>
+      </ul>
+
+      <div class="tab-content">
+        <!-- 1. แท็บลงเวลาเข้า-ออกงาน -->
+        <div class="tab-pane fade show active" id="tab-attendance">
+          <div class="card card-main p-3 bg-white mb-3 text-center">
+            <div class="d-flex align-items-center justify-content-between mb-2">
+              <span class="fw-bold text-secondary small"><i class="fa-solid fa-camera me-1"></i> กล้องยืนยันใบหน้า</span>
+              <span class="badge bg-light text-dark border" id="branchBadge">-</span>
+            </div>
+            
+            <!-- กล่องแสดงภาพจากกล้องเว็บแคม -->
+            <div class="camera-box mb-3" onclick="triggerCameraBox()">
+              <video id="video" autoplay playsinline muted></video>
+              <img id="photoPreview" alt="ภาพถ่ายใบหน้า">
+              
+              <!-- เมนูกดเปิดเว็บแคม -->
+              <div id="cameraPlaceholder">
+                <div class="rounded-circle bg-primary text-white d-inline-flex align-items-center justify-content-center mb-2 shadow" style="width: 52px; height: 52px; font-size: 22px;">
+                  <i class="fa-solid fa-video"></i>
+                </div>
+                <div class="fw-bold mb-1" id="cameraTitle">กดเพื่อเปิดกล้องเว็บแคม</div>
+                <div id="cameraHelpText" class="text-white-50 small" style="font-size: 0.75rem;">(แตะที่นี่เพื่อเริ่มการทำงานของกล้อง)</div>
+              </div>
+
+              <div id="retakeBadge" class="retake-badge" style="display: none;">
+                <i class="fa-solid fa-camera me-1"></i>กล้องเว็บแคมทำงานอยู่
+              </div>
+
+              <canvas id="canvas"></canvas>
+            </div>
+
+            <!-- ปุ่มเปิดกล้องเว็บแคมโดยตรง -->
+            <div class="mb-3 d-flex justify-content-center gap-2">
+              <button type="button" class="btn btn-outline-primary btn-sm rounded-pill px-3" onclick="startWebcam(true)">
+                <i class="fa-solid fa-video me-1"></i> เปิด/สลับกล้องเว็บแคม
+              </button>
+              <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill px-3" onclick="document.getElementById('fallbackFileInput').click()">
+                <i class="fa-solid fa-image me-1"></i> อัปโหลดรูปภาพ
+              </button>
+              <input type="file" id="fallbackFileInput" accept="image/*" style="display: none;" onchange="onFallbackFileSelected(event)">
+            </div>
+
+            <!-- กล่องแจ้งสถานะ GPS และระยะห่าง -->
+            <div id="gpsStatusBox" class="alert alert-secondary py-2 px-3 small d-flex align-items-center justify-content-between mb-3 border-0">
+              <span><i class="fa-solid fa-location-crosshairs me-1 text-primary"></i> ระยะห่างจากสาขา:</span>
+              <span id="gpsDistance" class="fw-bold">กำลังระบุพิกัด GPS...</span>
+            </div>
+
+            <!-- ปุ่มกดเข้างานและออกงาน -->
+            <div class="row g-2">
+              <div class="col-6">
+                <button class="btn btn-success w-100 py-3 fw-bold shadow-sm" id="btnCheckIn" onclick="handleAttendance('CHECK_IN')">
+                  <i class="fa-solid fa-arrow-right-to-bracket me-1"></i> เข้างาน (In)
+                </button>
+              </div>
+              <div class="col-6">
+                <button class="btn btn-danger w-100 py-3 fw-bold shadow-sm" id="btnCheckOut" onclick="handleAttendance('CHECK_OUT')">
+                  <i class="fa-solid fa-arrow-right-from-bracket me-1"></i> ออกงาน (Out)
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ตารางประวัติ 5 รายการล่าสุด -->
+          <div class="card card-main p-3 bg-white">
+            <h6 class="fw-bold text-muted mb-2 small"><i class="fa-solid fa-clock-rotate-left me-1"></i> ประวัติการลงเวลาล่าสุด</h6>
+            <div id="historyList" class="small">กำลังโหลดข้อมูล...</div>
+          </div>
+        </div>
+
+        <!-- 2. แท็บยื่นคำขอลางาน -->
+        <div class="tab-pane fade" id="tab-leave">
+          <div class="card card-main p-4 bg-white">
+            <h6 class="fw-bold text-primary mb-3"><i class="fa-solid fa-calendar-plus me-2"></i>ยื่นคำขอลางาน</h6>
+            <div class="mb-3">
+              <label class="form-label small fw-bold text-secondary">ประเภทการลา</label>
+              <select id="leaveType" class="form-select">
+                <option value="SICK">ลาป่วย</option>
+                <option value="BUSINESS">ลากิจ</option>
+                <option value="VACATION">ลาพักร้อน</option>
+              </select>
+            </div>
+            <div class="row g-2 mb-3">
+              <div class="col-6">
+                <label class="form-label small fw-bold text-secondary">ตั้งแต่วันที่</label>
+                <input type="date" id="leaveStart" class="form-control">
+              </div>
+              <div class="col-6">
+                <label class="form-label small fw-bold text-secondary">ถึงวันที่</label>
+                <input type="date" id="leaveEnd" class="form-control">
+              </div>
+            </div>
+            <div class="mb-3">
+              <label class="form-label small fw-bold text-secondary">เหตุผลการลา</label>
+              <textarea id="leaveReason" class="form-control" rows="3" placeholder="ระบุเหตุผลและรายละเอียด..."></textarea>
+            </div>
+            <button class="btn btn-primary w-100 py-2 fw-bold shadow-sm" onclick="submitLeave()">
+              <i class="fa-solid fa-paper-plane me-1"></i> ส่งคำขออนุมัติลา
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script>
+    let currentUser = null;
+    let branches = [];
+    let currentPosition = null;
+    let videoStream = null;
+    let fallbackImageBase64 = null;
+
+    window.onload = function() {
+      fetchUserData();
+      watchLocation();
+    };
+
+    // ฟังก์ชันเปิดกล้องเว็บแคม รองรับทั้ง PC และมือถือ (ไม่บังคับ facingMode เพื่อให้ USB Cam บน PC เปิดได้)
+    async function startWebcam(showFeedback = false) {
+      const videoElement = document.getElementById('video');
+      const placeholder = document.getElementById('cameraPlaceholder');
+      const photoPreview = document.getElementById('photoPreview');
+      const retakeBadge = document.getElementById('retakeBadge');
+      const helpText = document.getElementById('cameraHelpText');
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        Swal.fire('ไม่รองรับกล้อง', 'เบราว์เซอร์นี้ไม่รองรับการเปิดเว็บแคม หรือติดข้อจำกัดความปลอดภัย', 'error');
+        return false;
+      }
+
+      // ปิด Stream เดิมถ้ามี
+      if (videoStream) {
+        videoStream.getTracks().forEach(track => track.stop());
+        videoStream = null;
+      }
+
+      // พยายามลอง 2 รูปแบบ: 1. ความละเอียดมาตรฐาน 2. แบบพื้นฐานที่สุด
+      const constraintsList = [
+        { video: { width: { ideal: 640 }, height: { ideal: 480 } }, audio: false },
+        { video: true, audio: false }
+      ];
+
+      for (let constraints of constraintsList) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia(constraints);
+          videoStream = stream;
+          videoElement.srcObject = stream;
+          videoElement.style.display = 'block';
+          placeholder.style.display = 'none';
+          photoPreview.style.display = 'none';
+          retakeBadge.style.display = 'block';
+          fallbackImageBase64 = null;
+
+          videoElement.onloadedmetadata = () => {
+            videoElement.play();
+          };
+
+          if (showFeedback) {
+            Swal.fire({
+              icon: 'success',
+              title: 'เปิดเว็บแคมสำเร็จ',
+              text: 'ภาพจากกล้องเว็บแคมพร้อมแล้ว',
+              timer: 1500,
+              showConfirmButton: false
+            });
+          }
+          return true;
+        } catch (err) {
+          console.warn("ลองเปิด constraints ล้มเหลว:", constraints, err);
+        }
+      }
+
+      // หากทั้ง 2 รูปแบบเปิดไม่ได้
+      videoElement.style.display = 'none';
+      placeholder.style.display = 'flex';
+      retakeBadge.style.display = 'none';
+
+      let errorMsg = 'กรุณาตรวจสอบว่ามีโปรแกรมอื่นเปิดกล้องค้างอยู่หรือไม่ หรืออนุญาตสิทธิ์กล้องในเบราว์เซอร์';
+      if (location.href.indexOf('script.google.com') > -1) {
+        helpText.innerHTML = '<span class="text-warning">Google Apps Script บล็อกสตรีมสด<br>กรุณาใช้ปุ่ม "อัปโหลดรูปภาพ" หรือเปิดผ่าน Wrapper</span>';
+      }
+
+      if (showFeedback) {
+        Swal.fire({
+          icon: 'warning',
+          title: 'ไม่สามารถเปิดเว็บแคมได้',
+          html: `<p class="mb-2">${errorMsg}</p><small class="text-muted">หากอยู่บนคอมพิวเตอร์และรันผ่าน script.google.com โดยตรง Google จะบล็อกเว็บแคมไว้ สามารถใช้ปุ่ม "อัปโหลดรูปภาพ" ด้านล่างแทนได้ครับ</small>`,
+          confirmButtonText: 'เข้าใจแล้ว'
+        });
+      }
+      return false;
+    }
+
+    // แตะที่กล่องกล้อง
+    function triggerCameraBox() {
+      if (!videoStream || !videoStream.active) {
+        startWebcam(true);
+      }
+    }
+
+    // ฟังก์ชันเลือกรูปจากเครื่องกรณีกล้องเปิดไม่ได้จริงๆ (Fallback)
+    function onFallbackFileSelected(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      Swal.fire({
+        title: 'กำลังโหลดรูปภาพ...',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+      });
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const img = new Image();
+        img.onload = function() {
+          const canvas = document.getElementById('canvas');
+          const maxDim = 720;
+          let width = img.width;
+          let height = img.height;
+          if (width > height) {
+            if (width > maxDim) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            }
+          } else {
+            if (height > maxDim) {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          fallbackImageBase64 = canvas.toDataURL('image/jpeg', 0.82);
+
+          const photoPreview = document.getElementById('photoPreview');
+          const placeholder = document.getElementById('cameraPlaceholder');
+          const videoElement = document.getElementById('video');
+          const retakeBadge = document.getElementById('retakeBadge');
+
+          videoElement.style.display = 'none';
+          placeholder.style.display = 'none';
+          photoPreview.src = fallbackImageBase64;
+          photoPreview.style.display = 'block';
+          retakeBadge.style.display = 'block';
+          retakeBadge.innerText = 'เลือกรูปภาพแล้ว';
+
+          Swal.close();
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    // ติดตามพิกัด GPS
+    function watchLocation() {
+      if (navigator.geolocation) {
+        navigator.geolocation.watchPosition(pos => {
+          currentPosition = {
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude
+          };
+          updateDistanceDisplay();
+        }, err => {
+          document.getElementById('gpsDistance').innerHTML = '<span class="text-danger"><i class="fa-solid fa-triangle-exclamation"></i> ไม่สามารถเข้าถึง GPS</span>';
+        }, { enableHighAccuracy: true, timeout: 10000 });
+      }
+    }
+
+    // ดึงข้อมูลผู้ใช้
+    function fetchUserData() {
+      let activeEmail = "<?= userEmail ?>";
+      if (!activeEmail || activeEmail.trim() === "") {
+        activeEmail = localStorage.getItem("attendance_user_email") || "";
+      }
+
+      google.script.run.withSuccessHandler(res => {
+        branches = res.branches || [];
+        
+        const branchSelect = document.getElementById('regBranch');
+        branchSelect.innerHTML = '';
+        branches.forEach(b => {
+          branchSelect.innerHTML += `<option value="${b.branchId}">${b.branchName}</option>`;
+        });
+
+        if (res.user) {
+          currentUser = res.user;
+          localStorage.setItem("attendance_user_email", currentUser.email);
+          
+          document.getElementById('userName').innerText = currentUser.name;
+          document.getElementById('userEmail').innerText = currentUser.email;
+          document.getElementById('userRole').innerText = currentUser.role.toUpperCase();
+          document.getElementById('userRole').className = 'badge badge-status ' + (currentUser.role === 'admin' ? 'bg-danger' : 'bg-primary');
+          
+          const userBranch = branches.find(b => b.branchId === currentUser.branchId);
+          if (userBranch) {
+            document.getElementById('branchBadge').innerText = userBranch.branchName;
+          }
+
+          document.getElementById('switchAccBtn').style.display = 'block';
+          document.getElementById('registerSection').style.display = 'none';
+          document.getElementById('mainSection').style.display = 'block';
+          
+          loadRecentLogs();
+          updateDistanceDisplay();
+          
+          // พยายามเริ่มเปิดเว็บแคมอัตโนมัติ
+          startWebcam(false);
+
+        } else {
+          document.getElementById('userName').innerText = "พนักงานใหม่";
+          document.getElementById('userEmail').innerText = activeEmail || "ยังไม่ได้ลงทะเบียน";
+          if (activeEmail) {
+            document.getElementById('regEmail').value = activeEmail;
+          }
+          document.getElementById('mainSection').style.display = 'none';
+          document.getElementById('registerSection').style.display = 'block';
+        }
+      }).getInitialData(activeEmail);
+    }
+
+    // คำนวณระยะห่าง
+    function updateDistanceDisplay() {
+      if (!currentPosition || !currentUser) return;
+      const branch = branches.find(b => b.branchId === currentUser.branchId);
+      if (branch) {
+        const dist = Math.round(calculateDistanceLocal(currentPosition.lat, currentPosition.lng, branch.lat, branch.lng));
+        const distElem = document.getElementById('gpsDistance');
+        const box = document.getElementById('gpsStatusBox');
+        
+        if (dist <= branch.radius) {
+          box.className = 'alert alert-success py-2 px-3 small d-flex align-items-center justify-content-between mb-3 border-0';
+          distElem.innerHTML = `<span class="text-success"><i class="fa-solid fa-circle-check"></i> อยู่ในรัศมี (${dist} ม.)</span>`;
+        } else {
+          box.className = 'alert alert-danger py-2 px-3 small d-flex align-items-center justify-content-between mb-3 border-0';
+          distElem.innerHTML = `<span class="text-danger"><i class="fa-solid fa-circle-xmark"></i> นอกรัศมี (${dist} / ${branch.radius} ม.)</span>`;
+        }
+      }
+    }
+
+    function calculateDistanceLocal(lat1, lon1, lat2, lon2) {
+      const R = 6371e3;
+      const p1 = lat1 * Math.PI / 180;
+      const p2 = lat2 * Math.PI / 180;
+      const dp = (lat2 - lat1) * Math.PI / 180;
+      const dl = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dp/2)*Math.sin(dp/2) + Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)*Math.sin(dl/2);
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    }
+
+    // กดปุ่มบันทึกเวลาเข้า-ออกงาน
+    async function handleAttendance(type) {
+      if (!currentPosition) {
+        Swal.fire('GPS ไม่พร้อมใช้งาน', 'กำลังระบุพิกัดตำแหน่ง กรุณารอสักครู่แล้วลองใหม่อีกครั้ง', 'warning');
+        return;
+      }
+
+      // กรณีที่ 1: มี Stream จากเว็บแคมทำงานอยู่ -> แคปภาพสดจากเว็บแคมทันที
+      if (videoStream && videoStream.active) {
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        canvas.width = video.videoWidth || 640;
+        canvas.height = video.videoHeight || 480;
+        const ctx = canvas.getContext('2d');
+        ctx.translate(canvas.width, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const imageBase64 = canvas.toDataURL('image/jpeg', 0.82);
+        sendAttendanceRecord(type, imageBase64);
+        return;
+      }
+
+      // กรณีที่ 2: มีรูปภาพที่เลือกไว้ล่วงหน้า
+      if (fallbackImageBase64) {
+        sendAttendanceRecord(type, fallbackImageBase64);
+        return;
+      }
+
+      // กรณีที่ 3: ยังไม่มีภาพและกล้องยังไม่เปิด -> พยายามเปิดเว็บแคมให้ทันที
+      Swal.fire({
+        title: 'กำลังเปิดเว็บแคม...',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+      });
+
+      const opened = await startWebcam(false);
+      Swal.close();
+
+      if (opened) {
+        Swal.fire({
+          icon: 'info',
+          title: 'ส่องหน้าตรงกับกล้อง',
+          text: 'กล้องเว็บแคมเปิดแล้ว กดปุ่มเพื่อยืนยันการลงเวลา',
+          confirmButtonText: 'ถ่ายรูปและลงเวลาทันที',
+          confirmButtonColor: '#198754'
+        }).then(() => {
+          handleAttendance(type);
+        });
+      } else {
+        Swal.fire({
+          icon: 'warning',
+          title: 'ไม่สามารถเปิดเว็บแคมได้',
+          text: 'กรุณากดปุ่ม "เปิด/สลับกล้องเว็บแคม" หรือกด "อัปโหลดรูปภาพ" เพื่อลงเวลา',
+          confirmButtonText: 'ตกลง'
+        });
+      }
+    }
+
+    // ส่งข้อมูลไปบันทึกที่ Apps Script Backend
+    function sendAttendanceRecord(type, imageBase64) {
+      Swal.fire({
+        title: 'กำลังตรวจสอบ...',
+        text: 'กำลังบันทึกภาพ พิกัด และเวลาเข้าสู่ระบบ',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+      });
+
+      const payload = {
+        userId: currentUser.userId,
+        branchId: currentUser.branchId,
+        type: type,
+        lat: currentPosition.lat,
+        lng: currentPosition.lng,
+        imageBase64: imageBase64
+      };
+
+      google.script.run.withSuccessHandler(res => {
+        if (res.success) {
+          Swal.fire({
+            icon: 'success',
+            title: 'บันทึกสำเร็จ',
+            text: res.message,
+            timer: 3000,
+            showConfirmButton: false
+          });
+          loadRecentLogs();
+          fallbackImageBase64 = null;
+        } else {
+          Swal.fire({
+            icon: 'error',
+            title: 'ไม่สามารถลงเวลาได้',
+            text: res.message
+          });
+        }
+      }).recordAttendance(payload);
+    }
+
+    // โหลดประวัติ 5 รายการล่าสุด
+    function loadRecentLogs() {
+      google.script.run.withSuccessHandler(logs => {
+        const container = document.getElementById('historyList');
+        if (!logs || logs.length === 0) {
+          container.innerHTML = '<div class="text-muted text-center py-2">ยังไม่มีประวัติการลงเวลา</div>';
+          return;
+        }
+        let html = '<ul class="list-group list-group-flush">';
+        logs.forEach(l => {
+          const typeBadge = l.type === 'CHECK_IN' 
+            ? '<span class="badge bg-success-subtle text-success border border-success-subtle">เข้างาน</span>' 
+            : '<span class="badge bg-danger-subtle text-danger border border-danger-subtle">ออกงาน</span>';
+          
+          let statusBadge = l.status === 'LATE' 
+            ? '<span class="badge bg-warning text-dark">สาย</span>' 
+            : '<span class="badge bg-light text-secondary">ตรงเวลา</span>';
+
+          html += `
+            <li class="list-group-item px-0 py-2 d-flex justify-content-between align-items-center">
+              <div>
+                ${typeBadge}
+                <span class="ms-1 text-dark fw-medium">${l.timestamp}</span>
+              </div>
+              <div class="text-end">
+                ${statusBadge}
+                <div class="text-muted" style="font-size: 0.75rem;">ระยะ ${l.distance} ม.</div>
+              </div>
+            </li>`;
+        });
+        html += '</ul>';
+        container.innerHTML = html;
+      }).getRecentLogs(currentUser.userId);
+    }
+
+    function submitRegister() {
+      const email = document.getElementById('regEmail').value.trim();
+      const name = document.getElementById('regName').value.trim();
+      const branchId = document.getElementById('regBranch').value;
+
+      if (!email || !name) {
+        Swal.fire('ข้อมูลไม่ครบถ้วน', 'กรุณาระบุอีเมลและชื่อ-นามสกุล', 'warning');
+        return;
+      }
+
+      Swal.fire({
+        title: 'กำลังลงทะเบียน...',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+      });
+
+      google.script.run.withSuccessHandler(res => {
+        if (res.success) {
+          localStorage.setItem("attendance_user_email", email);
+          Swal.fire({
+            icon: 'success',
+            title: 'ลงทะเบียนเรียบร้อย',
+            text: res.message,
+            confirmButtonText: 'เข้าสู่ระบบ'
+          }).then(() => {
+            location.reload();
+          });
+        } else {
+          Swal.fire('เกิดข้อผิดพลาด', res.message, 'error');
+        }
+      }).registerUser({ name: name, branchId: branchId, email: email });
+    }
+
+    function submitLeave() {
+      const type = document.getElementById('leaveType').value;
+      const start = document.getElementById('leaveStart').value;
+      const end = document.getElementById('leaveEnd').value;
+      const reason = document.getElementById('leaveReason').value.trim();
+
+      if (!start || !end || !reason) {
+        Swal.fire('ข้อมูลไม่ครบถ้วน', 'กรุณาระบุช่วงวันที่และเหตุผลการลาให้ครบถ้วน', 'warning');
+        return;
+      }
+
+      Swal.fire({
+        title: 'กำลังส่งคำขอ...',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+      });
+
+      google.script.run.withSuccessHandler(res => {
+        if (res.success) {
+          Swal.fire('สำเร็จ', res.message, 'success');
+          document.getElementById('leaveReason').value = '';
+        } else {
+          Swal.fire('เกิดข้อผิดพลาด', res.message, 'error');
+        }
+      }).submitLeaveRequest({
+        userId: currentUser.userId,
+        leaveType: type,
+        startDate: start,
+        endDate: end,
+        reason: reason
+      });
+    }
+
+    function logoutUser() {
+      Swal.fire({
+        title: 'สลับบัญชีผู้ใช้?',
+        text: 'คุณต้องการล้างข้อมูลที่จดจำไว้ในเครื่องนี้หรือไม่',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'ใช่, สลับบัญชี',
+        cancelButtonText: 'ยกเลิก'
+      }).then((result) => {
+        if (result.isConfirmed) {
+          localStorage.removeItem("attendance_user_email");
+          location.reload();
+        }
+      });
+    }
+  </script>
+</body>
+</html>
