@@ -6,6 +6,10 @@
  * 2. สแกนออกมากกว่า 1 ครั้งต่อวัน คิดเวลาสุดท้ายเท่านั้น (อัปเดตแถวเดิม)
  * 3. เวลาเกินจากปกติคิดเป็นโอที บันทึกเวลาโอทีลงตาราง Logs
  * 4. สแกนออกก่อนเวลาคิดเป็นออกก่อน คำนวณเวลาออกก่อนลงตาราง Logs
+ * 5. คอลัมน์ เข้าสาย (นาที) ในตาราง Logs
+ * 6. คอลัมน์ ค่าโอทีต่อชั่วโมง และ โอทีต่อนาที (บาท) ในตาราง Users
+ * 7. แดชบอร์ดสรุปรายเดือน (ขาด ลา มา สาย เวลาโอที เงินค่าโอที) สำหรับแอดมิน
+ * 8. พนักงานสมัครใหม่มีสถานะ INACTIVE จนกว่าแอดมินจะอนุมัติ พร้อมหน้าอนุมัติและจัดการสิทธิ์ในแอป
  */
 
 // 1. ฟังก์ชันโหลดหน้าเว็บ Web App เมื่อเปิดผ่าน Apps Script URL โดยตรง
@@ -43,6 +47,14 @@ function doPost(e) {
       result = registerUser(req);
     } else if (action === "submitLeave") {
       result = submitLeaveRequest(req);
+    } else if (action === "getAdminDashboard") {
+      result = getAdminMonthlySummary(req.monthStr || "", req.adminEmail || "");
+    } else if (action === "updateUserOtRate") {
+      result = updateUserOtRate(req);
+    } else if (action === "getAllUsersForAdmin") {
+      result = getAllUsersForAdmin(req.adminEmail || "");
+    } else if (action === "updateUserPermission") {
+      result = updateUserPermission(req);
     }
 
     return ContentService.createTextOutput(JSON.stringify(result))
@@ -58,25 +70,85 @@ function include(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
 
+// ตรวจสอบและสร้างหัวตาราง Users ให้รองรับคอลัมน์ ค่าโอทีต่อชั่วโมง และ โอทีต่อนาที (บาท)
+function ensureUserHeaders(sheet) {
+  if (!sheet) return;
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow([
+      "User ID", "Name", "Role", "Branch ID", "Email", "Status",
+      "ค่าโอทีต่อชั่วโมง", "โอทีต่อนาที (บาท)"
+    ]);
+  } else {
+    var lastCol = Math.max(sheet.getLastColumn(), 8);
+    var headerRow = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    if (!headerRow[6] || headerRow[6].toString().trim() === "") {
+      sheet.getRange(1, 7).setValue("ค่าโอทีต่อชั่วโมง");
+    }
+    if (!headerRow[7] || headerRow[7].toString().trim() === "") {
+      sheet.getRange(1, 8).setValue("โอทีต่อนาที (บาท)");
+    }
+
+    // อัปเดตคำนวณ โอทีต่อนาที (บาท) สำหรับแถวที่มีค่าโอทีต่อชั่วโมงแต่ยังไม่มีค่าโอทีต่อนาที
+    var lastRow = sheet.getLastRow();
+    if (lastRow >= 2) {
+      var rateRange = sheet.getRange(2, 7, lastRow - 1, 2);
+      var rateVals = rateRange.getValues();
+      var rateFormulas = rateRange.getFormulas();
+      for (var i = 0; i < rateVals.length; i++) {
+        var rowNum = i + 2;
+        var hrRate = Number(rateVals[i][0]) || 0;
+        var minCellVal = rateVals[i][1];
+        var minFormula = rateFormulas[i][1];
+        if (!minFormula && (minCellVal === "" || minCellVal === null || (hrRate > 0 && Number(minCellVal) === 0))) {
+          sheet.getRange(rowNum, 8).setFormula("=IF(ISNUMBER(G" + rowNum + "), G" + rowNum + "/60, 0)");
+        }
+      }
+    }
+  }
+}
+
+// ตรวจสอบว่าอีเมลที่เรียกใช้งานเป็น Admin ที่ ACTIVE หรือไม่
+function verifyAdminAccess(usersData, adminEmail) {
+  var callerEmail = (adminEmail || Session.getActiveUser().getEmail() || "").toString().trim().toLowerCase();
+  if (!callerEmail) return false;
+  for (var i = 1; i < usersData.length; i++) {
+    var uEmail = (usersData[i][4] || "").toString().trim().toLowerCase();
+    var uRole = (usersData[i][2] || "").toString().trim().toLowerCase();
+    var uStatus = (usersData[i][5] || "ACTIVE").toString().trim().toUpperCase();
+    if (uEmail === callerEmail && uRole === "admin" && uStatus === "ACTIVE") {
+      return true;
+    }
+  }
+  return false;
+}
+
 // 3. ดึงข้อมูลพนักงานและสาขาตาม Email
 function getInitialData(email) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var userSheet = ss.getSheetByName("Users");
   var branchSheet = ss.getSheetByName("Branches");
+  var logSheet = ss.getSheetByName("Logs");
   
+  ensureUserHeaders(userSheet);
+  ensureLogHeaders(logSheet);
+
   var users = userSheet.getDataRange().getValues();
   var branches = branchSheet.getDataRange().getValues();
   
   var currentUser = null;
   for (var i = 1; i < users.length; i++) {
     if (users[i][4] && users[i][4].toString().trim().toLowerCase() === email.trim().toLowerCase()) {
+      var otRateHour = Number(users[i][6]) || 0;
+      var otRateMin = Number(users[i][7]) || (otRateHour / 60);
       currentUser = {
         userId: users[i][0],
         name: users[i][1],
-        role: users[i][2],
+        role: (users[i][2] || "user").toString().trim().toLowerCase(),
         branchId: users[i][3],
         email: users[i][4],
-        status: users[i][5]
+        status: (users[i][5] || "INACTIVE").toString().trim().toUpperCase(),
+        otRatePerHour: otRateHour,
+        otRatePerMinute: Number(otRateMin.toFixed(4))
       };
       break;
     }
@@ -103,12 +175,24 @@ function getInitialData(email) {
   };
 }
 
-// 4. ลงทะเบียนพนักงานใหม่
+// 4. ลงทะเบียนพนักงานใหม่ (กำหนด Status เริ่มต้นเป็น INACTIVE รอแอดมินอนุมัติ)
 function registerUser(data) {
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var sheet = ss.getSheetByName("Users");
+    ensureUserHeaders(sheet);
+
+    var users = sheet.getDataRange().getValues();
+    var cleanEmail = (data.email || "").toString().trim().toLowerCase();
+    for (var i = 1; i < users.length; i++) {
+      if ((users[i][4] || "").toString().trim().toLowerCase() === cleanEmail) {
+        return { success: false, message: "อีเมลนี้ถูกลงทะเบียนในระบบแล้ว" };
+      }
+    }
+
+    var nextRow = sheet.getLastRow() + 1;
     var newId = "U" + ("000" + sheet.getLastRow()).slice(-3);
+    var defaultOtHour = Number(data.otRatePerHour) || 0;
     
     sheet.appendRow([
       newId,
@@ -116,12 +200,170 @@ function registerUser(data) {
       "user",
       data.branchId,
       data.email,
-      "ACTIVE"
+      "INACTIVE", // สมัครใหม่เป็น INACTIVE จนกว่าแอดมินจะอนุมัติ
+      defaultOtHour,
+      defaultOtHour / 60
     ]);
+    sheet.getRange(nextRow, 8).setFormula("=IF(ISNUMBER(G" + nextRow + "), G" + nextRow + "/60, 0)");
     
-    return { success: true, message: "ลงทะเบียนสำเร็จ กรุณารอผู้ดูแลระบบตรวจสอบสิทธิ์" };
+    return { success: true, message: "ลงทะเบียนสำเร็จ บัญชีของคุณมีสถานะ INACTIVE กรุณารอผู้ดูแลระบบ (Admin) อนุมัติสิทธิ์เข้าใช้งาน" };
   } catch (error) {
     return { success: false, message: error.toString() };
+  }
+}
+
+// ดึงรายชื่อพนักงานทั้งหมดสำหรับหน้าอนุมัติและจัดการสิทธิ์ (เฉพาะ Admin)
+function getAllUsersForAdmin(adminEmail) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var userSheet = ss.getSheetByName("Users");
+    var branchSheet = ss.getSheetByName("Branches");
+    ensureUserHeaders(userSheet);
+
+    var users = userSheet.getDataRange().getValues();
+    if (!verifyAdminAccess(users, adminEmail)) {
+      return { success: false, message: "ปฏิเสธการเข้าถึง: เฉพาะผู้ดูแลระบบ (Admin) เท่านั้น" };
+    }
+
+    var branchMap = {};
+    if (branchSheet) {
+      var branches = branchSheet.getDataRange().getValues();
+      for (var b = 1; b < branches.length; b++) {
+        if (branches[b][0]) {
+          branchMap[branches[b][0]] = branches[b][1] || branches[b][0];
+        }
+      }
+    }
+
+    var userList = [];
+    var pendingCount = 0;
+    var activeCount = 0;
+
+    for (var i = 1; i < users.length; i++) {
+      if (!users[i][0]) continue;
+      var status = (users[i][5] || "INACTIVE").toString().trim().toUpperCase();
+      var role = (users[i][2] || "user").toString().trim().toLowerCase();
+      var otHour = Number(users[i][6]) || 0;
+      var otMin = Number(users[i][7]) || (otHour / 60);
+
+      if (status === "INACTIVE") {
+        pendingCount++;
+      } else if (status === "ACTIVE") {
+        activeCount++;
+      }
+
+      userList.push({
+        userId: users[i][0],
+        name: users[i][1] || "",
+        role: role,
+        branchId: users[i][3] || "",
+        branchName: branchMap[users[i][3]] || users[i][3] || "-",
+        email: users[i][4] || "",
+        status: status,
+        otRatePerHour: Number(otHour.toFixed(2)),
+        otRatePerMinute: Number(otMin.toFixed(4))
+      });
+    }
+
+    return {
+      success: true,
+      pendingCount: pendingCount,
+      activeCount: activeCount,
+      totalCount: userList.length,
+      users: userList
+    };
+  } catch (err) {
+    return { success: false, message: "เกิดข้อผิดพลาด: " + err.toString() };
+  }
+}
+
+// อนุมัติผู้ใช้งาน / จัดการสิทธิ์ Role, Status, สาขา และค่าโอที (เฉพาะ Admin)
+function updateUserPermission(req) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var userSheet = ss.getSheetByName("Users");
+    ensureUserHeaders(userSheet);
+
+    var users = userSheet.getDataRange().getValues();
+    if (!verifyAdminAccess(users, req.adminEmail)) {
+      return { success: false, message: "ปฏิเสธการเข้าถึง: เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่จัดการสิทธิ์ได้" };
+    }
+
+    var targetUserId = req.targetUserId;
+    if (!targetUserId) {
+      return { success: false, message: "ไม่พบรหัสพนักงานที่ต้องการแก้ไข" };
+    }
+
+    for (var r = 1; r < users.length; r++) {
+      if (users[r][0] === targetUserId) {
+        var rowIndex = r + 1;
+        var currentName = users[r][1];
+        var currentRole = (users[r][2] || "user").toString().trim().toLowerCase();
+        var currentBranch = users[r][3];
+        var currentStatus = (users[r][5] || "INACTIVE").toString().trim().toUpperCase();
+        var currentOtHour = Number(users[r][6]) || 0;
+
+        var newName = req.name !== undefined ? req.name.toString().trim() : currentName;
+        var newRole = req.role !== undefined ? req.role.toString().trim().toLowerCase() : currentRole;
+        var newBranch = req.branchId !== undefined ? req.branchId.toString().trim() : currentBranch;
+        var newStatus = req.status !== undefined ? req.status.toString().trim().toUpperCase() : currentStatus;
+        var newOtHour = req.otRatePerHour !== undefined ? Number(req.otRatePerHour) : currentOtHour;
+
+        if (isNaN(newOtHour) || newOtHour < 0) newOtHour = currentOtHour;
+
+        userSheet.getRange(rowIndex, 2).setValue(newName);
+        userSheet.getRange(rowIndex, 3).setValue(newRole);
+        userSheet.getRange(rowIndex, 4).setValue(newBranch);
+        userSheet.getRange(rowIndex, 6).setValue(newStatus);
+        userSheet.getRange(rowIndex, 7).setValue(newOtHour);
+        userSheet.getRange(rowIndex, 8).setFormula("=IF(ISNUMBER(G" + rowIndex + "), G" + rowIndex + "/60, 0)");
+
+        return {
+          success: true,
+          message: "อัปเดตสิทธิ์และสถานะของ " + newName + " (" + newStatus + " / " + newRole.toUpperCase() + ") เรียบร้อยแล้ว"
+        };
+      }
+    }
+
+    return { success: false, message: "ไม่พบรหัสพนักงานที่ระบุในระบบ" };
+  } catch (err) {
+    return { success: false, message: err.toString() };
+  }
+}
+
+// อัปเดตค่าโอทีต่อชั่วโมงของพนักงาน (เฉพาะ Admin)
+function updateUserOtRate(req) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var userSheet = ss.getSheetByName("Users");
+    ensureUserHeaders(userSheet);
+
+    var users = userSheet.getDataRange().getValues();
+    if (!verifyAdminAccess(users, req.adminEmail)) {
+      return { success: false, message: "ปฏิเสธการเข้าถึง: เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่แก้ไขค่าโอทีได้" };
+    }
+
+    var targetUserId = req.targetUserId;
+    var otRatePerHour = Number(req.otRatePerHour);
+    if (isNaN(otRatePerHour) || otRatePerHour < 0) {
+      return { success: false, message: "ค่าโอทีต่อชั่วโมงไม่ถูกต้อง" };
+    }
+
+    for (var r = 1; r < users.length; r++) {
+      if (users[r][0] === targetUserId) {
+        var rowIndex = r + 1;
+        userSheet.getRange(rowIndex, 7).setValue(otRatePerHour);
+        userSheet.getRange(rowIndex, 8).setFormula("=IF(ISNUMBER(G" + rowIndex + "), G" + rowIndex + "/60, 0)");
+        return {
+          success: true,
+          message: "อัปเดตค่าโอทีของ " + users[r][1] + " เป็น " + otRatePerHour + " บาท/ชม. (" + (otRatePerHour / 60).toFixed(2) + " บาท/นาที) เรียบร้อยแล้ว"
+        };
+      }
+    }
+
+    return { success: false, message: "ไม่พบรหัสพนักงานที่ระบุ" };
+  } catch (err) {
+    return { success: false, message: err.toString() };
   }
 }
 
@@ -160,21 +402,25 @@ function saveImageToDrive(base64Data, userId) {
   }
 }
 
-// ตรวจสอบและสร้างหัวตาราง Logs ให้รองรับคอลัมน์ OT และ ออกก่อน
+// ตรวจสอบและสร้างหัวตาราง Logs ให้รองรับคอลัมน์ OT, ออกก่อน และ เข้าสาย (นาที)
 function ensureLogHeaders(sheet) {
+  if (!sheet) return;
   if (sheet.getLastRow() === 0) {
     sheet.appendRow([
       "Log ID", "User ID", "Timestamp", "Type", "Branch ID", 
-      "Distance (m)", "Photo URL", "Status", "Note", "OT (นาที)", "ออกก่อน (นาที)"
+      "Distance (m)", "Photo URL", "Status", "Note", "OT (นาที)", "ออกก่อน (นาที)", "เข้าสาย (นาที)"
     ]);
   } else {
-    var lastCol = Math.max(sheet.getLastColumn(), 11);
+    var lastCol = Math.max(sheet.getLastColumn(), 12);
     var headerRow = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
     if (!headerRow[9] || headerRow[9].toString().trim() === "") {
       sheet.getRange(1, 10).setValue("OT (นาที)");
     }
     if (!headerRow[10] || headerRow[10].toString().trim() === "") {
       sheet.getRange(1, 11).setValue("ออกก่อน (นาที)");
+    }
+    if (!headerRow[11] || headerRow[11].toString().trim() === "") {
+      sheet.getRange(1, 12).setValue("เข้าสาย (นาที)");
     }
   }
 }
@@ -193,13 +439,54 @@ function formatMinutesToText(minutes) {
   return h + " ชม. " + m + " นาที";
 }
 
-// 7. ฟังก์ชันบันทึกเวลาสแกนเข้า-ออกงาน (พร้อมกฎ 4 ข้อ)
+// ฟังก์ชันดึงค่านาทีเข้าสายจากแถวในตาราง Logs (รองรับทั้งข้อมูลใหม่ในคอลัมน์ L และข้อมูลเก่าที่อยู่ใน Note)
+function extractLateMinutesFromRow(row) {
+  var colLate = Number(row[11]);
+  if (!isNaN(colLate) && colLate > 0) {
+    return colLate;
+  }
+  if (row[7] === "LATE" && row[8]) {
+    var noteStr = row[8].toString();
+    var hmMatch = noteStr.match(/สาย\s*(?:(\d+)\s*ชม\.\s*)?(?:(\d+)\s*นาที)?/);
+    if (hmMatch && (hmMatch[1] || hmMatch[2])) {
+      var h = hmMatch[1] ? parseInt(hmMatch[1], 10) : 0;
+      var m = hmMatch[2] ? parseInt(hmMatch[2], 10) : 0;
+      if (h > 0 || m > 0) return h * 60 + m;
+    }
+    var timeMatch = noteStr.match(/\((\d{1,2}):(\d{2})\s*>\s*(\d{1,2}):(\d{2})\)/);
+    if (timeMatch) {
+      var actualMin = parseInt(timeMatch[1], 10) * 60 + parseInt(timeMatch[2], 10);
+      var startMin = parseInt(timeMatch[3], 10) * 60 + parseInt(timeMatch[4], 10);
+      if (actualMin > startMin) return actualMin - startMin;
+    }
+  }
+  return 0;
+}
+
+// 7. ฟังก์ชันบันทึกเวลาสแกนเข้า-ออกงาน (ตรวจสอบสถานะ ACTIVE + กฎ 4 ข้อ + บันทึกนาทีเข้าสาย)
 function recordAttendance(payload) {
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var userSheet = ss.getSheetByName("Users");
     var logSheet = ss.getSheetByName("Logs");
     var branchSheet = ss.getSheetByName("Branches");
     
+    // ตรวจสอบสถานะพนักงานว่าได้รับอนุมัติ (ACTIVE) แล้วหรือไม่
+    var users = userSheet.getDataRange().getValues();
+    var userStatus = "INACTIVE";
+    for (var u = 1; u < users.length; u++) {
+      if (users[u][0] === payload.userId) {
+        userStatus = (users[u][5] || "INACTIVE").toString().trim().toUpperCase();
+        break;
+      }
+    }
+    if (userStatus !== "ACTIVE") {
+      return {
+        success: false,
+        message: "บัญชีของคุณยังไม่ได้รับการอนุมัติ (สถานะ: " + userStatus + ") กรุณารอผู้ดูแลระบบอนุมัติก่อนลงเวลา"
+      };
+    }
+
     // ตรวจสอบข้อมูลสาขา
     var branches = branchSheet.getDataRange().getValues();
     var targetBranch = null;
@@ -278,7 +565,6 @@ function recordAttendance(payload) {
 
     // ==========================================
     // กฎข้อ 1: สแกนเข้ามากกว่า 1 ครั้งต่อวัน ให้คิดเวลาแรกสุดเท่านั้น
-    // (หากมีเวลาเข้าอยู่แล้วในวันนี้ จะไม่นับและไม่บันทึกซ้ำ)
     // ==========================================
     if (payload.type === "CHECK_IN") {
       if (existingCheckInRow > 0) {
@@ -288,7 +574,7 @@ function recordAttendance(payload) {
         };
       }
 
-      // คำนวณเวลาเข้าสาย
+      // คำนวณเวลาเข้าสาย (นับเป็นนาที)
       var workStartTimeStr = "08:30";
       if (targetBranch.workStart) {
         workStartTimeStr = (targetBranch.workStart instanceof Date)
@@ -302,12 +588,13 @@ function recordAttendance(payload) {
 
       var status = "SUCCESS";
       var note = "เข้างานตรงเวลา";
+      var lateMinutes = 0;
 
       if (currentMin > startMin) {
-        var lateMinutes = currentMin - startMin;
+        lateMinutes = currentMin - startMin;
         var lateText = formatMinutesToText(lateMinutes);
         status = "LATE";
-        note = "เข้างานสาย " + lateText + " (เริ่มงาน " + workStartTimeStr + " สแกนเข้า " + currentTimeStr + ")";
+        note = "เข้างานสาย " + lateMinutes + " นาที (" + lateText + " | เริ่มงาน " + workStartTimeStr + " สแกนเข้า " + currentTimeStr + ")";
       }
 
       var photoUrl = saveImageToDrive(payload.imageBase64, payload.userId);
@@ -323,27 +610,26 @@ function recordAttendance(payload) {
         photoUrl,
         status,
         note,
-        0,  // OT
-        0   // ออกก่อน
+        0,           // OT (นาที)
+        0,           // ออกก่อน (นาที)
+        lateMinutes  // เข้าสาย (นาที)
       ]);
 
       var checkInMsg = "ลงเวลาเข้างานเรียบร้อยแล้ว (" + currentTimeStr + " น.)";
       if (status === "LATE") {
-        checkInMsg += " (สาย " + formatMinutesToText(currentMin - startMin) + ")";
+        checkInMsg += " (เข้าสาย " + lateMinutes + " นาที)";
       }
 
       return {
         success: true,
         message: checkInMsg,
-        status: status
+        status: status,
+        lateMinutes: lateMinutes
       };
     }
 
     // ==========================================
     // กฎข้อ 2, 3, 4: สแกนออก
-    // 2. สแกนออกมากกว่า 1 ครั้งต่อวัน คิดเวลาสุดท้ายเท่านั้น (อัปเดตแถวเดิม)
-    // 3. เวลาเกินจากปกติคิดเป็นโอที บันทึกเวลาโอทีลงตารางด้วย
-    // 4. สแกนออกก่อนเวลาคิดเป็นออกก่อน คำนวณเวลาออกก่อนด้วย
     // ==========================================
     if (payload.type === "CHECK_OUT") {
       var workEndTimeStr = "17:30";
@@ -363,34 +649,32 @@ function recordAttendance(payload) {
       var earlyMinutes = 0;
 
       if (currentMin > endMin) {
-        // กฎข้อ 3: เวลาเกินจากปกติ คิดเป็นโอที
         otMinutes = currentMin - endMin;
         var otText = formatMinutesToText(otMinutes);
         status = "OVERTIME";
-        note = "ทำโอที " + otText + " (เลิกงาน " + workEndTimeStr + " สแกนออก " + currentTimeStr + ")";
+        note = "ทำโอที " + otMinutes + " นาที (" + otText + " | เลิกงาน " + workEndTimeStr + " สแกนออก " + currentTimeStr + ")";
       } else if (currentMin < endMin) {
-        // กฎข้อ 4: สแกนออกก่อนเวลา คิดเป็นออกก่อน
         earlyMinutes = endMin - currentMin;
         var earlyText = formatMinutesToText(earlyMinutes);
         status = "EARLY_LEAVE";
-        note = "ออกก่อนเวลา " + earlyText + " (เลิกงาน " + workEndTimeStr + " สแกนออก " + currentTimeStr + ")";
+        note = "ออกก่อนเวลา " + earlyMinutes + " นาที (" + earlyText + " | เลิกงาน " + workEndTimeStr + " สแกนออก " + currentTimeStr + ")";
       }
 
       var photoUrl = saveImageToDrive(payload.imageBase64, payload.userId);
 
-      // กฎข้อ 2: ถ้ามีสแกนออกในวันนี้แล้ว ให้อัปเดตแถวเดิมเป็นเวลาล่าสุดเท่านั้น
       if (existingCheckOutRow > 0) {
-        logSheet.getRange(existingCheckOutRow, 3).setValue(timestampStr); // Timestamp ล่าสุด
-        logSheet.getRange(existingCheckOutRow, 6).setValue(distance);     // Distance
-        logSheet.getRange(existingCheckOutRow, 7).setValue(photoUrl);     // PhotoUrl ล่าสุด
-        logSheet.getRange(existingCheckOutRow, 8).setValue(status);       // Status
-        logSheet.getRange(existingCheckOutRow, 9).setValue(note);         // Note
-        logSheet.getRange(existingCheckOutRow, 10).setValue(otMinutes);   // OT (นาที)
-        logSheet.getRange(existingCheckOutRow, 11).setValue(earlyMinutes);// ออกก่อน (นาที)
+        logSheet.getRange(existingCheckOutRow, 3).setValue(timestampStr);
+        logSheet.getRange(existingCheckOutRow, 6).setValue(distance);
+        logSheet.getRange(existingCheckOutRow, 7).setValue(photoUrl);
+        logSheet.getRange(existingCheckOutRow, 8).setValue(status);
+        logSheet.getRange(existingCheckOutRow, 9).setValue(note);
+        logSheet.getRange(existingCheckOutRow, 10).setValue(otMinutes);
+        logSheet.getRange(existingCheckOutRow, 11).setValue(earlyMinutes);
+        logSheet.getRange(existingCheckOutRow, 12).setValue(0);
 
         var updateMsg = "อัปเดตเวลาออกงานเป็นเวลาล่าสุด (" + currentTimeStr + " น.) เรียบร้อยแล้ว";
-        if (otMinutes > 0) updateMsg += " (โอที " + formatMinutesToText(otMinutes) + ")";
-        if (earlyMinutes > 0) updateMsg += " (ออกก่อน " + formatMinutesToText(earlyMinutes) + ")";
+        if (otMinutes > 0) updateMsg += " (โอที " + otMinutes + " นาที)";
+        if (earlyMinutes > 0) updateMsg += " (ออกก่อน " + earlyMinutes + " นาที)";
 
         return {
           success: true,
@@ -398,7 +682,6 @@ function recordAttendance(payload) {
           status: status
         };
       } else {
-        // สแกนออกครั้งแรกของวันนี้ -> บันทึกแถวใหม่
         var logId = "LOG" + Utilities.formatDate(now, tz, "yyyyMMddHHmmss");
         logSheet.appendRow([
           logId,
@@ -411,12 +694,13 @@ function recordAttendance(payload) {
           status,
           note,
           otMinutes,
-          earlyMinutes
+          earlyMinutes,
+          0
         ]);
 
         var checkOutMsg = "ลงเวลาออกงานเรียบร้อยแล้ว (" + currentTimeStr + " น.)";
-        if (otMinutes > 0) checkOutMsg += " (โอที " + formatMinutesToText(otMinutes) + ")";
-        if (earlyMinutes > 0) checkOutMsg += " (ออกก่อน " + formatMinutesToText(earlyMinutes) + ")";
+        if (otMinutes > 0) checkOutMsg += " (โอที " + otMinutes + " นาที)";
+        if (earlyMinutes > 0) checkOutMsg += " (ออกก่อน " + earlyMinutes + " นาที)";
 
         return {
           success: true,
@@ -436,6 +720,19 @@ function recordAttendance(payload) {
 function submitLeaveRequest(data) {
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var userSheet = ss.getSheetByName("Users");
+    var users = userSheet.getDataRange().getValues();
+    var userStatus = "INACTIVE";
+    for (var u = 1; u < users.length; u++) {
+      if (users[u][0] === data.userId) {
+        userStatus = (users[u][5] || "INACTIVE").toString().trim().toUpperCase();
+        break;
+      }
+    }
+    if (userStatus !== "ACTIVE") {
+      return { success: false, message: "บัญชีของคุณยังไม่ได้รับอนุมัติ ไม่สามารถยื่นใบลาได้" };
+    }
+
     var leaveSheet = ss.getSheetByName("Leaves");
     var leaveId = "L" + ("000" + leaveSheet.getLastRow()).slice(-3);
     
@@ -459,6 +756,7 @@ function submitLeaveRequest(data) {
 function getRecentLogs(userId) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var logSheet = ss.getSheetByName("Logs");
+  ensureLogHeaders(logSheet);
   var data = logSheet.getDataRange().getValues();
   var logs = [];
   var tz = Session.getScriptTimeZone();
@@ -472,6 +770,7 @@ function getRecentLogs(userId) {
 
       var otVal = Number(data[i][9]) || 0;
       var earlyVal = Number(data[i][10]) || 0;
+      var lateVal = extractLateMinutesFromRow(data[i]);
 
       logs.push({
         timestamp: tsStr,
@@ -479,11 +778,276 @@ function getRecentLogs(userId) {
         distance: data[i][5],
         status: data[i][7],
         note: data[i][8] || "",
-        ot: otVal > 0 ? formatMinutesToText(otVal) : "",
-        early: earlyVal > 0 ? formatMinutesToText(earlyVal) : ""
+        ot: otVal > 0 ? otVal + " นาที" : "",
+        early: earlyVal > 0 ? earlyVal + " นาที" : "",
+        late: lateVal > 0 ? lateVal + " นาที" : "",
+        otMinutes: otVal,
+        earlyMinutes: earlyVal,
+        lateMinutes: lateVal
       });
       if (logs.length >= 5) break;
     }
   }
   return logs;
+}
+
+// 10. ดึงข้อมูลสรุปแดชบอร์ดรายเดือนสำหรับแอดมิน (สรุป ขาด, ลา, มา, สาย, เวลาโอที, ค่าโอที)
+function getAdminMonthlySummary(monthStr, adminEmail) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var tz = Session.getScriptTimeZone();
+
+    if (!monthStr || monthStr.trim() === "") {
+      monthStr = Utilities.formatDate(new Date(), tz, "yyyy-MM");
+    }
+
+    var userSheet = ss.getSheetByName("Users");
+    var logSheet = ss.getSheetByName("Logs");
+    var leaveSheet = ss.getSheetByName("Leaves");
+    var branchSheet = ss.getSheetByName("Branches");
+
+    ensureUserHeaders(userSheet);
+    ensureLogHeaders(logSheet);
+
+    var usersData = userSheet ? userSheet.getDataRange().getValues() : [];
+    var logsData = logSheet ? logSheet.getDataRange().getValues() : [];
+    var leavesData = leaveSheet ? leaveSheet.getDataRange().getValues() : [];
+    var branchesData = branchSheet ? branchSheet.getDataRange().getValues() : [];
+
+    // ตรวจสอบสิทธิ์ Admin
+    if (!verifyAdminAccess(usersData, adminEmail)) {
+      return {
+        success: false,
+        message: "ปฏิเสธการเข้าถึง: เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่สามารถดูแดชบอร์ดสรุปรายเดือนได้"
+      };
+    }
+
+    // แผนที่ชื่อสาขา
+    var branchMap = {};
+    for (var b = 1; b < branchesData.length; b++) {
+      if (branchesData[b][0]) {
+        branchMap[branchesData[b][0]] = branchesData[b][1] || branchesData[b][0];
+      }
+    }
+
+    // คำนวณวันทำงาน (จันทร์ - ศุกร์) ของเดือนที่เลือก (นับเฉพาะวันที่ผ่านมาแล้วถึงวันนี้ หากเป็นเดือนปัจจุบัน)
+    var parts = monthStr.split("-");
+    var year = parseInt(parts[0], 10);
+    var month = parseInt(parts[1], 10); // 1-12
+    var daysInMonth = new Date(year, month, 0).getDate();
+    var todayStr = Utilities.formatDate(new Date(), tz, "yyyy-MM-dd");
+
+    var workingDatesUpToToday = [];
+    var totalWorkingDaysInMonth = 0;
+
+    for (var d = 1; d <= daysInMonth; d++) {
+      var dateObj = new Date(year, month - 1, d);
+      var dayOfWeek = dateObj.getDay(); // 0 = อาทิตย์, 6 = เสาร์
+      var dStr = year + "-" + ("0" + month).slice(-2) + "-" + ("0" + d).slice(-2);
+      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+        totalWorkingDaysInMonth++;
+        if (dStr <= todayStr) {
+          workingDatesUpToToday.push(dStr);
+        }
+      }
+    }
+
+    // เตรียมโครงสร้างข้อมูลพนักงานแต่ละคน
+    var staffMap = {};
+    var staffOrder = [];
+
+    for (var i = 1; i < usersData.length; i++) {
+      var uid = usersData[i][0];
+      if (!uid) continue;
+      var otHour = Number(usersData[i][6]) || 0;
+      var otMin = Number(usersData[i][7]);
+      if (isNaN(otMin) || (otMin === 0 && otHour > 0)) {
+        otMin = otHour / 60;
+      }
+
+      staffMap[uid] = {
+        userId: uid,
+        name: usersData[i][1] || uid,
+        role: (usersData[i][2] || "user").toString(),
+        branchId: usersData[i][3] || "",
+        branchName: branchMap[usersData[i][3]] || usersData[i][3] || "-",
+        email: usersData[i][4] || "",
+        status: (usersData[i][5] || "INACTIVE").toString().trim().toUpperCase(),
+        otRatePerHour: Number(otHour.toFixed(2)),
+        otRatePerMinute: Number(otMin.toFixed(4)),
+        presentDatesMap: {},
+        leaveDatesMap: {},
+        presentDays: 0,
+        leaveDays: 0,
+        absentDays: 0,
+        lateCount: 0,
+        lateMinutes: 0,
+        earlyLeaveCount: 0,
+        earlyLeaveMinutes: 0,
+        otMinutes: 0,
+        otPayBaht: 0
+      };
+      staffOrder.push(uid);
+    }
+
+    // ประมวลผลตาราง Logs ในเดือนที่เลือก
+    for (var l = 1; l < logsData.length; l++) {
+      var row = logsData[l];
+      var lUid = row[1];
+      var lTs = row[2];
+      var lType = row[3];
+      var lStatus = row[7];
+
+      if (!lUid || !staffMap[lUid] || !lTs) continue;
+
+      var dateStr = (lTs instanceof Date)
+        ? Utilities.formatDate(lTs, tz, "yyyy-MM-dd")
+        : lTs.toString().substring(0, 10);
+
+      if (dateStr.substring(0, 7) !== monthStr) continue;
+
+      var st = staffMap[lUid];
+
+      if (lType === "CHECK_IN") {
+        st.presentDatesMap[dateStr] = true;
+        var lateMin = extractLateMinutesFromRow(row);
+        if (lStatus === "LATE" || lateMin > 0) {
+          st.lateCount++;
+          st.lateMinutes += lateMin;
+        }
+      } else if (lType === "CHECK_OUT") {
+        st.presentDatesMap[dateStr] = true;
+        var otMinVal = Number(row[9]) || 0;
+        var earlyMinVal = Number(row[10]) || 0;
+        if (otMinVal > 0) {
+          st.otMinutes += otMinVal;
+        }
+        if (earlyMinVal > 0 || lStatus === "EARLY_LEAVE") {
+          st.earlyLeaveCount++;
+          st.earlyLeaveMinutes += earlyMinVal;
+        }
+      }
+    }
+
+    // ประมวลผลตาราง Leaves ในเดือนที่เลือก
+    for (var lv = 1; lv < leavesData.length; lv++) {
+      var lvRow = leavesData[lv];
+      var lvUid = lvRow[1];
+      var lvStart = lvRow[3];
+      var lvEnd = lvRow[4];
+      var lvStatus = (lvRow[6] || "PENDING").toString().toUpperCase();
+
+      if (!lvUid || !staffMap[lvUid] || !lvStart || !lvEnd) continue;
+      if (lvStatus === "REJECTED" || lvStatus === "CANCELLED") continue;
+
+      var startStr = (lvStart instanceof Date)
+        ? Utilities.formatDate(lvStart, tz, "yyyy-MM-dd")
+        : lvStart.toString().substring(0, 10);
+      var endStr = (lvEnd instanceof Date)
+        ? Utilities.formatDate(lvEnd, tz, "yyyy-MM-dd")
+        : lvEnd.toString().substring(0, 10);
+
+      var sParts = startStr.split("-");
+      var eParts = endStr.split("-");
+      if (sParts.length === 3 && eParts.length === 3) {
+        var curDate = new Date(parseInt(sParts[0], 10), parseInt(sParts[1], 10) - 1, parseInt(sParts[2], 10));
+        var endDate = new Date(parseInt(eParts[0], 10), parseInt(eParts[1], 10) - 1, parseInt(eParts[2], 10));
+
+        var safetyCounter = 0;
+        while (curDate <= endDate && safetyCounter < 366) {
+          var curDateStr = Utilities.formatDate(curDate, tz, "yyyy-MM-dd");
+          if (curDateStr.substring(0, 7) === monthStr) {
+            staffMap[lvUid].leaveDatesMap[curDateStr] = true;
+          }
+          curDate.setDate(curDate.getDate() + 1);
+          safetyCounter++;
+        }
+      }
+    }
+
+    // สรุปยอดรายคนและยอดรวมทั้งบริษัท
+    var summaryRows = [];
+    var totals = {
+      totalStaff: staffOrder.length,
+      workingDaysElapsed: workingDatesUpToToday.length,
+      totalWorkingDaysInMonth: totalWorkingDaysInMonth,
+      presentDays: 0,
+      leaveDays: 0,
+      absentDays: 0,
+      lateCount: 0,
+      lateMinutes: 0,
+      otMinutes: 0,
+      otPayBaht: 0
+    };
+
+    for (var k = 0; k < staffOrder.length; k++) {
+      var id = staffOrder[k];
+      var item = staffMap[id];
+
+      item.presentDays = Object.keys(item.presentDatesMap).length;
+      item.leaveDays = Object.keys(item.leaveDatesMap).length;
+
+      // คำนวณวันขาดงานเฉพาะพนักงานที่สถานะ ACTIVE
+      var absentCount = 0;
+      if (item.status === "ACTIVE") {
+        for (var w = 0; w < workingDatesUpToToday.length; w++) {
+          var wDate = workingDatesUpToToday[w];
+          if (!item.presentDatesMap[wDate] && !item.leaveDatesMap[wDate]) {
+            absentCount++;
+          }
+        }
+      }
+      item.absentDays = absentCount;
+
+      // คำนวณเงินค่าโอที = จำนวนเวลาโอที (นาที) * โอทีต่อนาที (บาท)
+      item.otPayBaht = Number((item.otMinutes * item.otRatePerMinute).toFixed(2));
+      item.otHoursText = formatMinutesToText(item.otMinutes);
+      item.lateHoursText = formatMinutesToText(item.lateMinutes);
+
+      totals.presentDays += item.presentDays;
+      totals.leaveDays += item.leaveDays;
+      totals.absentDays += item.absentDays;
+      totals.lateCount += item.lateCount;
+      totals.lateMinutes += item.lateMinutes;
+      totals.otMinutes += item.otMinutes;
+      totals.otPayBaht += item.otPayBaht;
+
+      summaryRows.push({
+        userId: item.userId,
+        name: item.name,
+        role: item.role,
+        status: item.status,
+        branchName: item.branchName,
+        presentDays: item.presentDays,
+        leaveDays: item.leaveDays,
+        absentDays: item.absentDays,
+        lateCount: item.lateCount,
+        lateMinutes: item.lateMinutes,
+        lateHoursText: item.lateHoursText,
+        earlyLeaveCount: item.earlyLeaveCount,
+        earlyLeaveMinutes: item.earlyLeaveMinutes,
+        otRatePerHour: item.otRatePerHour,
+        otRatePerMinute: item.otRatePerMinute,
+        otMinutes: item.otMinutes,
+        otHoursText: item.otHoursText,
+        otPayBaht: item.otPayBaht
+      });
+    }
+
+    totals.otPayBaht = Number(totals.otPayBaht.toFixed(2));
+    totals.otHoursText = formatMinutesToText(totals.otMinutes);
+    totals.lateHoursText = formatMinutesToText(totals.lateMinutes);
+
+    return {
+      success: true,
+      monthStr: monthStr,
+      totals: totals,
+      staffSummary: summaryRows
+    };
+  } catch (err) {
+    return {
+      success: false,
+      message: "เกิดข้อผิดพลาดในการคำนวณแดชบอร์ด: " + err.toString()
+    };
+  }
 }

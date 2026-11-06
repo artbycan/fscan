@@ -2,7 +2,8 @@
 <html lang="th">
 <head>
   <meta charset="UTF-8">
-  <title>ระบบลงเวลาเข้า-ออกงานและจัดการการลา</title>
+  <title>ระบบลงเวลาเข้า-ออกงาน (ภายนอก)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <!-- Bootstrap 5 CSS -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <!-- Font Awesome Icons -->
@@ -17,6 +18,13 @@
     body {
       background-color: #f0f2f5;
       min-height: 100vh;
+    }
+    .app-container {
+      max-width: 520px;
+      transition: max-width 0.25s ease;
+    }
+    .app-container.admin-wide {
+      max-width: 1020px;
     }
     .card-main {
       border-radius: 18px;
@@ -36,65 +44,91 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      cursor: pointer;
     }
     #video {
       width: 100%;
       height: 100%;
       object-fit: cover;
-      transform: scaleX(-1); /* กลับด้านภาพให้เหมือนกระจก */
-    }
-    #photoPreview {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: none;
-    }
-    #cameraPlaceholder {
-      color: #fff;
-      text-align: center;
-      padding: 15px;
-      width: 100%;
-      height: 100%;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-    }
-    .retake-badge {
-      position: absolute;
-      bottom: 10px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(0, 0, 0, 0.7);
-      color: #fff;
-      padding: 4px 14px;
-      border-radius: 20px;
-      font-size: 0.75rem;
-      pointer-events: none;
+      transform: scaleX(-1);
     }
     #canvas {
       display: none;
     }
+    .live-badge {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      background: rgba(220, 53, 69, 0.9);
+      color: #fff;
+      font-size: 0.72rem;
+      font-weight: bold;
+      padding: 3px 10px;
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    }
+    .live-dot {
+      width: 7px;
+      height: 7px;
+      background: #fff;
+      border-radius: 50%;
+      animation: pulse 1.2s infinite;
+    }
+    @keyframes pulse {
+      0% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.8); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+    .scan-guide {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 170px;
+      height: 210px;
+      border: 2px dashed rgba(255, 255, 255, 0.6);
+      border-radius: 100px;
+      pointer-events: none;
+      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.25);
+    }
     .badge-status {
-      font-size: 0.8rem;
-      padding: 6px 12px;
+      font-size: 0.78rem;
+      padding: 5px 10px;
       border-radius: 20px;
       font-weight: 600;
     }
     .nav-pills .nav-link {
       border-radius: 12px;
       color: #6c757d;
-      padding: 10px;
+      padding: 10px 6px;
+      font-size: 0.85rem;
     }
     .nav-pills .nav-link.active {
       background-color: #0d6efd;
       color: #fff;
     }
+    .stat-card {
+      border-radius: 14px;
+      border: 1px solid rgba(0,0,0,0.06);
+      padding: 12px;
+      height: 100%;
+    }
+    .table-dashboard th {
+      font-size: 0.8rem;
+      white-space: nowrap;
+      background-color: #f8f9fa;
+    }
+    .table-dashboard td {
+      font-size: 0.85rem;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
   </style>
 </head>
 <body class="py-4">
-  <div class="container" style="max-width: 480px;">
+  <div class="container app-container" id="appContainer">
     
     <!-- ส่วนข้อมูลโปรไฟล์ผู้ใช้ -->
     <div class="card card-main p-3 mb-3 bg-white">
@@ -109,7 +143,10 @@
           </div>
         </div>
         <div class="text-end">
-          <span class="badge bg-secondary badge-status" id="userRole">-</span>
+          <div>
+            <span class="badge bg-secondary badge-status" id="userRole">-</span>
+            <span class="badge bg-secondary badge-status ms-1" id="userStatusBadge" style="display: none;">-</span>
+          </div>
           <div class="mt-1" id="switchAccBtn" style="display: none;">
             <a href="javascript:void(0)" onclick="logoutUser()" class="text-muted small text-decoration-none" style="font-size: 0.75rem;">
               <i class="fa-solid fa-right-from-bracket me-1"></i>สลับบัญชี
@@ -119,14 +156,37 @@
       </div>
     </div>
 
+    <!-- ฟอร์มกรอกอีเมลเข้าใช้งาน (แสดงเมื่อยังไม่มีการจำอีเมลในเครื่อง) -->
+    <div id="loginSection" class="card card-main p-4 mb-3 bg-white" style="display: none;">
+      <div class="text-center mb-3">
+        <div class="rounded-circle bg-primary-subtle text-primary d-inline-flex align-items-center justify-content-center mb-2 shadow-sm" style="width: 58px; height: 58px; font-size: 24px;">
+          <i class="fa-solid fa-id-badge"></i>
+        </div>
+        <h5 class="fw-bold text-dark mb-1">เข้าสู่ระบบลงเวลา</h5>
+        <p class="text-muted small mb-0">ระบุอีเมล Gmail ของคุณเพื่อเริ่มต้นใช้งาน</p>
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label fw-bold small text-secondary">อีเมล Gmail <span class="text-danger">*</span></label>
+        <div class="input-group">
+          <span class="input-group-text bg-light"><i class="fa-solid fa-envelope text-muted"></i></span>
+          <input type="email" id="loginEmailInput" class="form-control" placeholder="name@gmail.com" required>
+        </div>
+      </div>
+
+      <button class="btn btn-primary w-100 py-2 fw-bold shadow-sm" onclick="submitEmailLogin()">
+        <i class="fa-solid fa-arrow-right-to-bracket me-1"></i> เข้าสู่ระบบ
+      </button>
+    </div>
+
     <!-- ฟอร์มลงทะเบียนพนักงานใหม่ (แสดงเมื่อยังไม่มีข้อมูลใน Sheet Users) -->
     <div id="registerSection" class="card card-main p-4 mb-3 bg-white" style="display: none;">
       <div class="text-center mb-3">
         <div class="rounded-circle bg-primary-subtle text-primary d-inline-flex align-items-center justify-content-center mb-2" style="width: 56px; height: 56px; font-size: 24px;">
           <i class="fa-solid fa-address-card"></i>
         </div>
-        <h5 class="fw-bold text-dark mb-1">ลงทะเบียนเข้าใช้งาน</h5>
-        <p class="text-muted small mb-0">กรุณากรอกข้อมูลเพื่อสร้างประวัติพนักงานในระบบ</p>
+        <h5 class="fw-bold text-dark mb-1">ลงทะเบียนพนักงานใหม่</h5>
+        <p class="text-muted small mb-0">เมื่อลงทะเบียนแล้ว บัญชีจะมีสถานะ <b>INACTIVE</b> เพื่อรอแอดมินอนุมัติ</p>
       </div>
 
       <div class="mb-3">
@@ -158,17 +218,53 @@
       </button>
     </div>
 
-    <!-- หน้าต่างหลักเมื่อเข้าสู่ระบบเรียบร้อยแล้ว -->
+    <!-- หน้าจอแจ้งเตือนรออนุมัติ (แสดงเมื่อผู้ใช้งานมี Status = INACTIVE) -->
+    <div id="pendingApprovalSection" class="card card-main p-4 mb-3 bg-white text-center" style="display: none;">
+      <div class="rounded-circle bg-warning-subtle text-warning-emphasis d-inline-flex align-items-center justify-content-center mx-auto mb-3 shadow-sm" style="width: 68px; height: 68px; font-size: 30px;">
+        <i class="fa-solid fa-user-clock"></i>
+      </div>
+      <h5 class="fw-bold text-dark mb-2">บัญชีของคุณอยู่ระหว่างรอการอนุมัติ</h5>
+      <div class="mb-3">
+        <span class="badge bg-warning text-dark px-3 py-2 rounded-pill fw-bold">สถานะปัจจุบัน: INACTIVE (รออนุมัติ)</span>
+      </div>
+      <p class="text-muted small mb-4">
+        ข้อมูลการสมัครของคุณถูกบันทึกเข้าสู่ระบบเรียบร้อยแล้ว<br>
+        กรุณารอผู้ดูแลระบบ (Admin) ตรวจสอบและกดอนุมัติเปิดใช้งานบัญชีของคุณ จึงจะสามารถสแกนลงเวลาเข้า-ออกงานได้
+      </p>
+      <div class="d-flex gap-2 justify-content-center">
+        <button class="btn btn-outline-primary px-4 fw-bold" onclick="initUserSession()">
+          <i class="fa-solid fa-arrows-rotate me-1"></i> ตรวจสอบสถานะอีกครั้ง
+        </button>
+        <button class="btn btn-light border px-3 text-secondary" onclick="logoutUser()">
+          สลับบัญชี
+        </button>
+      </div>
+    </div>
+
+    <!-- หน้าต่างหลักเมื่อเข้าสู่ระบบและได้รับอนุมัติ (ACTIVE) เรียบร้อยแล้ว -->
     <div id="mainSection" style="display: none;">
       <ul class="nav nav-pills nav-fill mb-3 bg-white p-1 rounded-4 shadow-sm" id="pills-tab">
         <li class="nav-item">
-          <button class="nav-link active fw-bold" data-bs-toggle="pill" data-bs-target="#tab-attendance">
-            <i class="fa-solid fa-fingerprint me-2"></i>ลงเวลา
+          <button class="nav-link active fw-bold" data-bs-toggle="pill" data-bs-target="#tab-attendance" onclick="setContainerWide(false)">
+            <i class="fa-solid fa-fingerprint me-1"></i>ลงเวลา
           </button>
         </li>
         <li class="nav-item">
-          <button class="nav-link fw-bold" data-bs-toggle="pill" data-bs-target="#tab-leave">
-            <i class="fa-solid fa-envelope-open-text me-2"></i>แจ้งลางาน
+          <button class="nav-link fw-bold" data-bs-toggle="pill" data-bs-target="#tab-leave" onclick="setContainerWide(false)">
+            <i class="fa-solid fa-envelope-open-text me-1"></i>แจ้งลางาน
+          </button>
+        </li>
+        <!-- แท็บแดชบอร์ดสรุปรายเดือน (เฉพาะ Admin) -->
+        <li class="nav-item" id="adminNavTab" style="display: none;">
+          <button class="nav-link fw-bold" data-bs-toggle="pill" data-bs-target="#tab-admin" onclick="onOpenAdminTab()">
+            <i class="fa-solid fa-chart-pie me-1"></i>สรุปรายเดือน
+          </button>
+        </li>
+        <!-- แท็บอนุมัติผู้ใช้และจัดการสิทธิ์ (เฉพาะ Admin) -->
+        <li class="nav-item" id="adminUsersNavTab" style="display: none;">
+          <button class="nav-link fw-bold position-relative" data-bs-toggle="pill" data-bs-target="#tab-users" onclick="onOpenUsersManageTab()">
+            <i class="fa-solid fa-user-shield me-1"></i>อนุมัติ/จัดการสิทธิ์
+            <span id="pendingBadgeCount" class="badge rounded-pill bg-danger ms-1" style="display: none; font-size: 0.7rem;">0</span>
           </button>
         </li>
       </ul>
@@ -178,43 +274,27 @@
         <div class="tab-pane fade show active" id="tab-attendance">
           <div class="card card-main p-3 bg-white mb-3 text-center">
             <div class="d-flex align-items-center justify-content-between mb-2">
-              <span class="fw-bold text-secondary small"><i class="fa-solid fa-camera me-1"></i> กล้องยืนยันใบหน้า</span>
+              <span class="fw-bold text-secondary small"><i class="fa-solid fa-camera me-1"></i> กล้องตรวจจับใบหน้าสด</span>
               <span class="badge bg-light text-dark border" id="branchBadge">-</span>
             </div>
             
-            <!-- กล่องแสดงภาพจากกล้องเว็บแคม -->
-            <div class="camera-box mb-3" onclick="triggerCameraBox()">
+            <!-- กล่องแสดงภาพกล้องเว็บแคมสด -->
+            <div class="camera-box mb-3">
               <video id="video" autoplay playsinline muted></video>
-              <img id="photoPreview" alt="ภาพถ่ายใบหน้า">
-              
-              <!-- เมนูกดเปิดเว็บแคม -->
-              <div id="cameraPlaceholder">
-                <div class="rounded-circle bg-primary text-white d-inline-flex align-items-center justify-content-center mb-2 shadow" style="width: 52px; height: 52px; font-size: 22px;">
-                  <i class="fa-solid fa-video"></i>
-                </div>
-                <div class="fw-bold mb-1" id="cameraTitle">กดเพื่อเปิดกล้องเว็บแคม</div>
-                <div id="cameraHelpText" class="text-white-50 small" style="font-size: 0.75rem;">(แตะที่นี่เพื่อเริ่มการทำงานของกล้อง)</div>
+              <div class="live-badge">
+                <span class="live-dot"></span> LIVE CAM
               </div>
-
-              <div id="retakeBadge" class="retake-badge" style="display: none;">
-                <i class="fa-solid fa-camera me-1"></i>กล้องเว็บแคมทำงานอยู่
-              </div>
-
+              <div class="scan-guide"></div>
               <canvas id="canvas"></canvas>
             </div>
 
-            <!-- ปุ่มเปิดกล้องเว็บแคมโดยตรง -->
             <div class="mb-3 d-flex justify-content-center gap-2">
-              <button type="button" class="btn btn-outline-primary btn-sm rounded-pill px-3" onclick="startWebcam(true)">
-                <i class="fa-solid fa-video me-1"></i> เปิด/สลับกล้องเว็บแคม
+              <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill px-3" onclick="startWebcam()">
+                <i class="fa-solid fa-rotate me-1"></i> สลับ/เปิดกล้องใหม่
               </button>
-              <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill px-3" onclick="document.getElementById('fallbackFileInput').click()">
-                <i class="fa-solid fa-image me-1"></i> อัปโหลดรูปภาพ
-              </button>
-              <input type="file" id="fallbackFileInput" accept="image/*" style="display: none;" onchange="onFallbackFileSelected(event)">
             </div>
 
-            <!-- กล่องแจ้งสถานะ GPS และระยะห่าง -->
+            <!-- กล่องแจ้งสถานะ GPS -->
             <div id="gpsStatusBox" class="alert alert-secondary py-2 px-3 small d-flex align-items-center justify-content-between mb-3 border-0">
               <span><i class="fa-solid fa-location-crosshairs me-1 text-primary"></i> ระยะห่างจากสาขา:</span>
               <span id="gpsDistance" class="fw-bold">กำลังระบุพิกัด GPS...</span>
@@ -273,6 +353,176 @@
             </button>
           </div>
         </div>
+
+        <!-- 3. แท็บแดชบอร์ดสรุปรายเดือน (เฉพาะแอดมิน) -->
+        <div class="tab-pane fade" id="tab-admin">
+          <div class="card card-main p-4 bg-white mb-3">
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+              <div>
+                <h5 class="fw-bold text-dark mb-0">
+                  <i class="fa-solid fa-chart-line text-primary me-2"></i>แดชบอร์ดสรุปเวลาทำงานและค่าโอทีรายเดือน
+                </h5>
+                <small class="text-muted">เข้าถึงได้เฉพาะผู้ดูแลระบบ (Admin) | คำนวณขาด ลา มา สาย เวลาโอที และเงินค่าโอที</small>
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <input type="month" id="dashboardMonthPicker" class="form-control form-control-sm" style="width: 165px;" onchange="loadAdminDashboard()">
+                <button class="btn btn-primary btn-sm px-3 fw-bold" onclick="loadAdminDashboard()">
+                  <i class="fa-solid fa-arrows-rotate me-1"></i>คำนวณใหม่
+                </button>
+              </div>
+            </div>
+
+            <!-- การ์ดสรุปภาพรวมประจำเดือน -->
+            <div class="row g-2 mb-4" id="dashboardSummaryCards">
+              <div class="col-6 col-md-2">
+                <div class="stat-card bg-success-subtle border-success-subtle text-center">
+                  <div class="small text-success fw-bold">มาทำงานรวม</div>
+                  <div class="fs-5 fw-bold text-success mt-1" id="sumPresentDays">-</div>
+                  <div class="text-muted" style="font-size: 0.72rem;">วัน</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-2">
+                <div class="stat-card bg-info-subtle border-info-subtle text-center">
+                  <div class="small text-info-emphasis fw-bold">ลางานรวม</div>
+                  <div class="fs-5 fw-bold text-info-emphasis mt-1" id="sumLeaveDays">-</div>
+                  <div class="text-muted" style="font-size: 0.72rem;">วัน</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-2">
+                <div class="stat-card bg-danger-subtle border-danger-subtle text-center">
+                  <div class="small text-danger fw-bold">ขาดงานรวม</div>
+                  <div class="fs-5 fw-bold text-danger mt-1" id="sumAbsentDays">-</div>
+                  <div class="text-muted" style="font-size: 0.72rem;">วัน</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-2">
+                <div class="stat-card bg-warning-subtle border-warning-subtle text-center">
+                  <div class="small text-warning-emphasis fw-bold">เข้าสายรวม</div>
+                  <div class="fs-5 fw-bold text-warning-emphasis mt-1" id="sumLateMinutes">-</div>
+                  <div class="text-muted" style="font-size: 0.72rem;" id="sumLateSub">นาที</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-2">
+                <div class="stat-card bg-primary-subtle border-primary-subtle text-center">
+                  <div class="small text-primary fw-bold">เวลาโอทีรวม</div>
+                  <div class="fs-5 fw-bold text-primary mt-1" id="sumOtMinutes">-</div>
+                  <div class="text-muted" style="font-size: 0.72rem;" id="sumOtSub">นาที</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-2">
+                <div class="stat-card bg-dark text-white text-center">
+                  <div class="small text-warning fw-bold">เงินค่าโอทีรวม</div>
+                  <div class="fs-5 fw-bold text-warning mt-1" id="sumOtPayBaht">-</div>
+                  <div class="text-white-50" style="font-size: 0.72rem;">บาท</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ตารางสรุปรายบุคคล -->
+            <div class="table-responsive">
+              <table class="table table-hover table-bordered table-dashboard align-middle mb-0">
+                <thead>
+                  <tr class="text-center">
+                    <th class="text-start">พนักงาน</th>
+                    <th>สาขา</th>
+                    <th class="text-success">มา (วัน)</th>
+                    <th class="text-info-emphasis">ลา (วัน)</th>
+                    <th class="text-danger">ขาด (วัน)</th>
+                    <th class="text-warning-emphasis">เข้าสาย (ครั้ง / นาที)</th>
+                    <th>ค่าโอที/ชม. (บาท)</th>
+                    <th>โอที/นาที (บาท)</th>
+                    <th class="text-primary">เวลาโอที (นาที)</th>
+                    <th class="bg-warning-subtle text-dark">เงินค่าโอที (บาท)</th>
+                    <th>ตั้งค่าโอที</th>
+                  </tr>
+                </thead>
+                <tbody id="adminDashboardTableBody">
+                  <tr>
+                    <td colspan="11" class="text-center text-muted py-4">กำลังโหลดข้อมูลสรุปรายเดือน...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="mt-2 d-flex justify-content-between flex-wrap text-muted" style="font-size: 0.75rem;">
+              <span id="workingDaysNote">* วันขาดงานคำนวณจากวันทำการ (จันทร์-ศุกร์) ที่ผ่านมาแล้วในเดือนนี้ ที่ไม่มีประวัติสแกนและไม่มีใบลา</span>
+              <span>* เงินค่าโอที = เวลาโอที (นาที) × โอทีต่อนาที (บาท)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. แท็บอนุมัติผู้ใช้งานและจัดการสิทธิ์ (เฉพาะแอดมิน) -->
+        <div class="tab-pane fade" id="tab-users">
+          <!-- ส่วนที่ 1: รายการผู้สมัครใหม่ที่รออนุมัติ (Status = INACTIVE) -->
+          <div class="card card-main p-4 bg-white mb-3 border-start border-warning border-4">
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+              <div>
+                <h5 class="fw-bold text-dark mb-0">
+                  <i class="fa-solid fa-user-check text-warning me-2"></i>รายการรออนุมัติเข้าใช้งาน (INACTIVE)
+                </h5>
+                <small class="text-muted">ผู้ใช้งานที่เพิ่งลงทะเบียนใหม่ จะต้องได้รับการอนุมัติจากแอดมินก่อนจึงจะเข้าใช้งานระบบได้</small>
+              </div>
+              <button class="btn btn-outline-primary btn-sm px-3 fw-bold" onclick="loadUsersManagement()">
+                <i class="fa-solid fa-arrows-rotate me-1"></i>รีเฟรชข้อมูล
+              </button>
+            </div>
+
+            <div class="table-responsive">
+              <table class="table table-hover table-bordered table-dashboard align-middle mb-0">
+                <thead>
+                  <tr class="text-center">
+                    <th class="text-start">รหัส / ชื่อ-นามสกุล</th>
+                    <th class="text-start">อีเมล</th>
+                    <th>สาขา</th>
+                    <th>สถานะ</th>
+                    <th>การดำเนินการ</th>
+                  </tr>
+                </thead>
+                <tbody id="pendingUsersTableBody">
+                  <tr>
+                    <td colspan="5" class="text-center text-muted py-3">กำลังโหลดรายการรออนุมัติ...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- ส่วนที่ 2: ตารางจัดการสิทธิ์พนักงานทั้งหมด (เปลี่ยน Role Admin/User, เปิด/ระงับการใช้งาน, ย้ายสาขา, ตั้งค่าโอที) -->
+          <div class="card card-main p-4 bg-white mb-3">
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+              <div>
+                <h5 class="fw-bold text-dark mb-0">
+                  <i class="fa-solid fa-users-gear text-primary me-2"></i>จัดการสิทธิ์และสถานะพนักงานทั้งหมด
+                </h5>
+                <small class="text-muted">กำหนดสิทธิ์ผู้ดูแลระบบ (Admin / User), เปลี่ยนสถานะ (ACTIVE / INACTIVE), สาขา และอัตราค่าโอที</small>
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <span class="badge bg-success-subtle text-success border px-3 py-2" id="totalActiveUsersBadge">ACTIVE: 0</span>
+                <span class="badge bg-warning-subtle text-warning-emphasis border px-3 py-2" id="totalPendingUsersBadge">INACTIVE: 0</span>
+              </div>
+            </div>
+
+            <div class="table-responsive">
+              <table class="table table-hover table-bordered table-dashboard align-middle mb-0">
+                <thead>
+                  <tr class="text-center">
+                    <th class="text-start">พนักงาน</th>
+                    <th class="text-start">อีเมล</th>
+                    <th>สาขาประจำการ</th>
+                    <th>ระดับสิทธิ์ (Role)</th>
+                    <th>สถานะบัญชี (Status)</th>
+                    <th>ค่าโอที/ชม. (บาท)</th>
+                    <th>บันทึก / จัดการ</th>
+                  </tr>
+                </thead>
+                <tbody id="allUsersManageTableBody">
+                  <tr>
+                    <td colspan="7" class="text-center text-muted py-4">กำลังโหลดข้อมูลพนักงาน...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -281,155 +531,79 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script>
+    // URL Backend Google Apps Script Web App
+    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw9uAPBl43LhV3di_jjutBi1vNjIXaqCD2vqt9tY1NRVfU4ktF83-KkYPMFXPPk0-_E/exec';
+
     let currentUser = null;
     let branches = [];
     let currentPosition = null;
     let videoStream = null;
-    let fallbackImageBase64 = null;
+
+    // ฟังก์ชันเชื่อมต่อไปยัง Google Apps Script ผ่าน POST
+    async function callApi(action, data = {}) {
+      const payload = { action: action, ...data };
+      const response = await fetch(SCRIPT_URL, {
+        method: 'POST',
+        redirect: 'follow',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8'
+        },
+        body: JSON.stringify(payload)
+      });
+      return await response.json();
+    }
 
     window.onload = function() {
-      fetchUserData();
-      watchLocation();
-    };
-
-    // ฟังก์ชันเปิดกล้องเว็บแคม รองรับทั้ง PC และมือถือ (ไม่บังคับ facingMode เพื่อให้ USB Cam บน PC เปิดได้)
-    async function startWebcam(showFeedback = false) {
-      const videoElement = document.getElementById('video');
-      const placeholder = document.getElementById('cameraPlaceholder');
-      const photoPreview = document.getElementById('photoPreview');
-      const retakeBadge = document.getElementById('retakeBadge');
-      const helpText = document.getElementById('cameraHelpText');
-
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        Swal.fire('ไม่รองรับกล้อง', 'เบราว์เซอร์นี้ไม่รองรับการเปิดเว็บแคม หรือติดข้อจำกัดความปลอดภัย', 'error');
-        return false;
+      const now = new Date();
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const monthInput = document.getElementById('dashboardMonthPicker');
+      if (monthInput) {
+        monthInput.value = `${yyyy}-${mm}`;
       }
 
-      // ปิด Stream เดิมถ้ามี
+      watchLocation();
+      initUserSession();
+    };
+
+    function setContainerWide(isWide) {
+      const container = document.getElementById('appContainer');
+      if (!container) return;
+      if (isWide) {
+        container.classList.add('admin-wide');
+      } else {
+        container.classList.remove('admin-wide');
+      }
+    }
+
+    // ฟังก์ชันเปิดกล้องเว็บแคมสด
+    async function startWebcam() {
+      const videoElement = document.getElementById('video');
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        Swal.fire('ไม่รองรับกล้อง', 'เบราว์เซอร์นี้ไม่รองรับการเปิดเว็บแคม หรือต้องรันบน HTTPS / localhost', 'error');
+        return;
+      }
+
       if (videoStream) {
         videoStream.getTracks().forEach(track => track.stop());
         videoStream = null;
       }
 
-      // พยายามลอง 2 รูปแบบ: 1. ความละเอียดมาตรฐาน 2. แบบพื้นฐานที่สุด
-      const constraintsList = [
-        { video: { width: { ideal: 640 }, height: { ideal: 480 } }, audio: false },
-        { video: true, audio: false }
-      ];
-
-      for (let constraints of constraintsList) {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia(constraints);
-          videoStream = stream;
-          videoElement.srcObject = stream;
-          videoElement.style.display = 'block';
-          placeholder.style.display = 'none';
-          photoPreview.style.display = 'none';
-          retakeBadge.style.display = 'block';
-          fallbackImageBase64 = null;
-
-          videoElement.onloadedmetadata = () => {
-            videoElement.play();
-          };
-
-          if (showFeedback) {
-            Swal.fire({
-              icon: 'success',
-              title: 'เปิดเว็บแคมสำเร็จ',
-              text: 'ภาพจากกล้องเว็บแคมพร้อมแล้ว',
-              timer: 1500,
-              showConfirmButton: false
-            });
-          }
-          return true;
-        } catch (err) {
-          console.warn("ลองเปิด constraints ล้มเหลว:", constraints, err);
-        }
-      }
-
-      // หากทั้ง 2 รูปแบบเปิดไม่ได้
-      videoElement.style.display = 'none';
-      placeholder.style.display = 'flex';
-      retakeBadge.style.display = 'none';
-
-      let errorMsg = 'กรุณาตรวจสอบว่ามีโปรแกรมอื่นเปิดกล้องค้างอยู่หรือไม่ หรืออนุญาตสิทธิ์กล้องในเบราว์เซอร์';
-      if (location.href.indexOf('script.google.com') > -1) {
-        helpText.innerHTML = '<span class="text-warning">Google Apps Script บล็อกสตรีมสด<br>กรุณาใช้ปุ่ม "อัปโหลดรูปภาพ" หรือเปิดผ่าน Wrapper</span>';
-      }
-
-      if (showFeedback) {
-        Swal.fire({
-          icon: 'warning',
-          title: 'ไม่สามารถเปิดเว็บแคมได้',
-          html: `<p class="mb-2">${errorMsg}</p><small class="text-muted">หากอยู่บนคอมพิวเตอร์และรันผ่าน script.google.com โดยตรง Google จะบล็อกเว็บแคมไว้ สามารถใช้ปุ่ม "อัปโหลดรูปภาพ" ด้านล่างแทนได้ครับ</small>`,
-          confirmButtonText: 'เข้าใจแล้ว'
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 640 }, height: { ideal: 480 } },
+          audio: false
         });
-      }
-      return false;
-    }
 
-    // แตะที่กล่องกล้อง
-    function triggerCameraBox() {
-      if (!videoStream || !videoStream.active) {
-        startWebcam(true);
-      }
-    }
-
-    // ฟังก์ชันเลือกรูปจากเครื่องกรณีกล้องเปิดไม่ได้จริงๆ (Fallback)
-    function onFallbackFileSelected(event) {
-      const file = event.target.files[0];
-      if (!file) return;
-
-      Swal.fire({
-        title: 'กำลังโหลดรูปภาพ...',
-        allowOutsideClick: false,
-        didOpen: () => Swal.showLoading()
-      });
-
-      const reader = new FileReader();
-      reader.onload = function(e) {
-        const img = new Image();
-        img.onload = function() {
-          const canvas = document.getElementById('canvas');
-          const maxDim = 720;
-          let width = img.width;
-          let height = img.height;
-          if (width > height) {
-            if (width > maxDim) {
-              height = Math.round((height * maxDim) / width);
-              width = maxDim;
-            }
-          } else {
-            if (height > maxDim) {
-              width = Math.round((width * maxDim) / height);
-              height = maxDim;
-            }
-          }
-
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, width, height);
-
-          fallbackImageBase64 = canvas.toDataURL('image/jpeg', 0.82);
-
-          const photoPreview = document.getElementById('photoPreview');
-          const placeholder = document.getElementById('cameraPlaceholder');
-          const videoElement = document.getElementById('video');
-          const retakeBadge = document.getElementById('retakeBadge');
-
-          videoElement.style.display = 'none';
-          placeholder.style.display = 'none';
-          photoPreview.src = fallbackImageBase64;
-          photoPreview.style.display = 'block';
-          retakeBadge.style.display = 'block';
-          retakeBadge.innerText = 'เลือกรูปภาพแล้ว';
-
-          Swal.close();
+        videoStream = stream;
+        videoElement.srcObject = stream;
+        videoElement.onloadedmetadata = () => {
+          videoElement.play();
         };
-        img.src = e.target.result;
-      };
-      reader.readAsDataURL(file);
+      } catch (err) {
+        console.error("Webcam open error:", err);
+      }
     }
 
     // ติดตามพิกัด GPS
@@ -447,16 +621,46 @@
       }
     }
 
-    // ดึงข้อมูลผู้ใช้
-    function fetchUserData() {
-      let activeEmail = "<?= userEmail ?>";
-      if (!activeEmail || activeEmail.trim() === "") {
-        activeEmail = localStorage.getItem("attendance_user_email") || "";
+    // จัดการ Session ผู้ใช้
+    function initUserSession() {
+      const savedEmail = localStorage.getItem("attendance_user_email") || "";
+      if (savedEmail) {
+        loadUserData(savedEmail);
+      } else {
+        document.getElementById('userName').innerText = "ยินดีต้อนรับ";
+        document.getElementById('userEmail').innerText = "กรุณาระบุอีเมล";
+        document.getElementById('mainSection').style.display = 'none';
+        document.getElementById('registerSection').style.display = 'none';
+        document.getElementById('pendingApprovalSection').style.display = 'none';
+        document.getElementById('loginSection').style.display = 'block';
       }
+    }
 
-      google.script.run.withSuccessHandler(res => {
+    function submitEmailLogin() {
+      const email = document.getElementById('loginEmailInput').value.trim();
+      if (!email || !email.includes('@')) {
+        Swal.fire('ข้อมูลไม่ถูกต้อง', 'กรุณาระบุอีเมล Gmail ให้ถูกต้อง', 'warning');
+        return;
+      }
+      localStorage.setItem("attendance_user_email", email);
+      loadUserData(email);
+    }
+
+    // โหลดข้อมูลผู้ใช้จาก Google Sheets
+    async function loadUserData(email) {
+      Swal.fire({
+        title: 'กำลังเชื่อมต่อระบบ...',
+        text: 'กำลังดึงข้อมูลพนักงานและตรวจสอบสิทธิ์',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+      });
+
+      try {
+        const res = await callApi('getInitialData', { email: email });
+        Swal.close();
+
         branches = res.branches || [];
-        
+
         const branchSelect = document.getElementById('regBranch');
         branchSelect.innerHTML = '';
         branches.forEach(b => {
@@ -465,38 +669,82 @@
 
         if (res.user) {
           currentUser = res.user;
-          localStorage.setItem("attendance_user_email", currentUser.email);
-          
+          const isAdmin = (currentUser.role || '').toString().toLowerCase() === 'admin';
+          const userStatus = (currentUser.status || 'INACTIVE').toString().toUpperCase();
+
           document.getElementById('userName').innerText = currentUser.name;
           document.getElementById('userEmail').innerText = currentUser.email;
           document.getElementById('userRole').innerText = currentUser.role.toUpperCase();
-          document.getElementById('userRole').className = 'badge badge-status ' + (currentUser.role === 'admin' ? 'bg-danger' : 'bg-primary');
-          
+          document.getElementById('userRole').className = 'badge badge-status ' + (isAdmin ? 'bg-danger' : 'bg-primary');
+
+          const statusBadge = document.getElementById('userStatusBadge');
+          statusBadge.style.display = 'inline-block';
+          statusBadge.innerText = userStatus;
+          statusBadge.className = 'badge badge-status ms-1 ' + (userStatus === 'ACTIVE' ? 'bg-success' : 'bg-warning text-dark');
+
+          document.getElementById('switchAccBtn').style.display = 'block';
+          document.getElementById('loginSection').style.display = 'none';
+          document.getElementById('registerSection').style.display = 'none';
+
+          // หากสถานะเป็น INACTIVE ให้แสดงหน้ารออนุมัติจากแอดมิน ไม่ให้เข้าใช้งานระบบหลัก
+          if (userStatus !== 'ACTIVE') {
+            document.getElementById('mainSection').style.display = 'none';
+            document.getElementById('pendingApprovalSection').style.display = 'block';
+            return;
+          }
+
+          document.getElementById('pendingApprovalSection').style.display = 'none';
+          document.getElementById('mainSection').style.display = 'block';
+
+          // แสดงแท็บแดชบอร์ดและแท็บอนุมัติ/จัดการสิทธิ์ เฉพาะ Admin เท่านั้น
+          document.getElementById('adminNavTab').style.display = isAdmin ? 'block' : 'none';
+          document.getElementById('adminUsersNavTab').style.display = isAdmin ? 'block' : 'none';
+
           const userBranch = branches.find(b => b.branchId === currentUser.branchId);
           if (userBranch) {
             document.getElementById('branchBadge').innerText = userBranch.branchName;
           }
 
-          document.getElementById('switchAccBtn').style.display = 'block';
-          document.getElementById('registerSection').style.display = 'none';
-          document.getElementById('mainSection').style.display = 'block';
-          
           loadRecentLogs();
           updateDistanceDisplay();
-          
-          // พยายามเริ่มเปิดเว็บแคมอัตโนมัติ
-          startWebcam(false);
+          startWebcam();
 
-        } else {
-          document.getElementById('userName').innerText = "พนักงานใหม่";
-          document.getElementById('userEmail').innerText = activeEmail || "ยังไม่ได้ลงทะเบียน";
-          if (activeEmail) {
-            document.getElementById('regEmail').value = activeEmail;
+          if (isAdmin) {
+            refreshPendingCountBadge();
           }
+        } else {
+          // หากไม่มีประวัติ ให้แสดงหน้าลงทะเบียน
+          document.getElementById('userName').innerText = "พนักงานใหม่";
+          document.getElementById('userEmail').innerText = email;
+          document.getElementById('regEmail').value = email;
+          document.getElementById('userStatusBadge').style.display = 'none';
+          document.getElementById('switchAccBtn').style.display = 'block';
+          document.getElementById('loginSection').style.display = 'none';
           document.getElementById('mainSection').style.display = 'none';
+          document.getElementById('pendingApprovalSection').style.display = 'none';
           document.getElementById('registerSection').style.display = 'block';
         }
-      }).getInitialData(activeEmail);
+      } catch (err) {
+        Swal.fire('เชื่อมต่อล้มเหลว', 'ไม่สามารถเชื่อมต่อฐานข้อมูล Apps Script: ' + err.message, 'error');
+      }
+    }
+
+    // ดึงจำนวนผู้รออนุมัติมาแสดงบน Badge ของแอดมิน
+    async function refreshPendingCountBadge() {
+      try {
+        const res = await callApi('getAllUsersForAdmin', { adminEmail: currentUser.email });
+        if (res && res.success) {
+          const badge = document.getElementById('pendingBadgeCount');
+          if (res.pendingCount > 0) {
+            badge.innerText = res.pendingCount;
+            badge.style.display = 'inline-block';
+          } else {
+            badge.style.display = 'none';
+          }
+        }
+      } catch (e) {
+        console.warn('ไม่สามารถดึงจำนวนรออนุมัติ:', e);
+      }
     }
 
     // คำนวณระยะห่าง
@@ -507,7 +755,7 @@
         const dist = Math.round(calculateDistanceLocal(currentPosition.lat, currentPosition.lng, branch.lat, branch.lng));
         const distElem = document.getElementById('gpsDistance');
         const box = document.getElementById('gpsStatusBox');
-        
+
         if (dist <= branch.radius) {
           box.className = 'alert alert-success py-2 px-3 small d-flex align-items-center justify-content-between mb-3 border-0';
           distElem.innerHTML = `<span class="text-success"><i class="fa-solid fa-circle-check"></i> อยู่ในรัศมี (${dist} ม.)</span>`;
@@ -528,66 +776,29 @@
       return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     }
 
-    // กดปุ่มบันทึกเวลาเข้า-ออกงาน
+    // สแกนหน้าและบันทึกเวลาเข้า-ออกงาน
     async function handleAttendance(type) {
       if (!currentPosition) {
         Swal.fire('GPS ไม่พร้อมใช้งาน', 'กำลังระบุพิกัดตำแหน่ง กรุณารอสักครู่แล้วลองใหม่อีกครั้ง', 'warning');
         return;
       }
 
-      // กรณีที่ 1: มี Stream จากเว็บแคมทำงานอยู่ -> แคปภาพสดจากเว็บแคมทันที
-      if (videoStream && videoStream.active) {
-        const video = document.getElementById('video');
-        const canvas = document.getElementById('canvas');
-        canvas.width = video.videoWidth || 640;
-        canvas.height = video.videoHeight || 480;
-        const ctx = canvas.getContext('2d');
-        ctx.translate(canvas.width, 0);
-        ctx.scale(-1, 1);
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const imageBase64 = canvas.toDataURL('image/jpeg', 0.82);
-        sendAttendanceRecord(type, imageBase64);
+      if (!videoStream || !videoStream.active) {
+        Swal.fire('กล้องยังไม่พร้อม', 'กำลังเริ่มเปิดกล้องเว็บแคม กรุณารอสักครู่', 'warning');
+        await startWebcam();
         return;
       }
 
-      // กรณีที่ 2: มีรูปภาพที่เลือกไว้ล่วงหน้า
-      if (fallbackImageBase64) {
-        sendAttendanceRecord(type, fallbackImageBase64);
-        return;
-      }
+      const video = document.getElementById('video');
+      const canvas = document.getElementById('canvas');
+      canvas.width = video.videoWidth || 640;
+      canvas.height = video.videoHeight || 480;
+      const ctx = canvas.getContext('2d');
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const imageBase64 = canvas.toDataURL('image/jpeg', 0.82);
 
-      // กรณีที่ 3: ยังไม่มีภาพและกล้องยังไม่เปิด -> พยายามเปิดเว็บแคมให้ทันที
-      Swal.fire({
-        title: 'กำลังเปิดเว็บแคม...',
-        allowOutsideClick: false,
-        didOpen: () => Swal.showLoading()
-      });
-
-      const opened = await startWebcam(false);
-      Swal.close();
-
-      if (opened) {
-        Swal.fire({
-          icon: 'info',
-          title: 'ส่องหน้าตรงกับกล้อง',
-          text: 'กล้องเว็บแคมเปิดแล้ว กดปุ่มเพื่อยืนยันการลงเวลา',
-          confirmButtonText: 'ถ่ายรูปและลงเวลาทันที',
-          confirmButtonColor: '#198754'
-        }).then(() => {
-          handleAttendance(type);
-        });
-      } else {
-        Swal.fire({
-          icon: 'warning',
-          title: 'ไม่สามารถเปิดเว็บแคมได้',
-          text: 'กรุณากดปุ่ม "เปิด/สลับกล้องเว็บแคม" หรือกด "อัปโหลดรูปภาพ" เพื่อลงเวลา',
-          confirmButtonText: 'ตกลง'
-        });
-      }
-    }
-
-    // ส่งข้อมูลไปบันทึกที่ Apps Script Backend
-    function sendAttendanceRecord(type, imageBase64) {
       Swal.fire({
         title: 'กำลังตรวจสอบ...',
         text: 'กำลังบันทึกภาพ พิกัด และเวลาเข้าสู่ระบบ',
@@ -604,7 +815,8 @@
         imageBase64: imageBase64
       };
 
-      google.script.run.withSuccessHandler(res => {
+      try {
+        const res = await callApi('recordAttendance', payload);
         if (res.success) {
           Swal.fire({
             icon: 'success',
@@ -614,7 +826,6 @@
             showConfirmButton: false
           });
           loadRecentLogs();
-          fallbackImageBase64 = null;
         } else {
           Swal.fire({
             icon: 'error',
@@ -622,45 +833,420 @@
             text: res.message
           });
         }
-      }).recordAttendance(payload);
+      } catch (err) {
+        Swal.fire('เกิดข้อผิดพลาด', 'ส่งข้อมูลล้มเหลว: ' + err.message, 'error');
+      }
     }
 
     // โหลดประวัติ 5 รายการล่าสุด
-    function loadRecentLogs() {
-      google.script.run.withSuccessHandler(logs => {
+    async function loadRecentLogs() {
+      try {
+        const res = await callApi('getRecentLogs', { userId: currentUser.userId });
+        const logs = res.logs || [];
         const container = document.getElementById('historyList');
+
         if (!logs || logs.length === 0) {
           container.innerHTML = '<div class="text-muted text-center py-2">ยังไม่มีประวัติการลงเวลา</div>';
           return;
         }
+
         let html = '<ul class="list-group list-group-flush">';
         logs.forEach(l => {
           const typeBadge = l.type === 'CHECK_IN' 
             ? '<span class="badge bg-success-subtle text-success border border-success-subtle">เข้างาน</span>' 
             : '<span class="badge bg-danger-subtle text-danger border border-danger-subtle">ออกงาน</span>';
           
-          let statusBadge = l.status === 'LATE' 
-            ? '<span class="badge bg-warning text-dark">สาย</span>' 
-            : '<span class="badge bg-light text-secondary">ตรงเวลา</span>';
+          let statusBadge = '';
+          if (l.status === 'LATE') {
+            statusBadge = `<span class="badge bg-warning text-dark">เข้าสาย ${l.late || ''}</span>`;
+          } else if (l.status === 'OVERTIME') {
+            statusBadge = `<span class="badge bg-primary text-white">โอที ${l.ot || ''}</span>`;
+          } else if (l.status === 'EARLY_LEAVE') {
+            statusBadge = `<span class="badge bg-danger text-white">ออกก่อน ${l.early || ''}</span>`;
+          } else {
+            statusBadge = '<span class="badge bg-success-subtle text-success">ตรงเวลา</span>';
+          }
 
           html += `
             <li class="list-group-item px-0 py-2 d-flex justify-content-between align-items-center">
               <div>
                 ${typeBadge}
                 <span class="ms-1 text-dark fw-medium">${l.timestamp}</span>
+                ${l.note ? `<div class="text-secondary small mt-1" style="font-size: 0.75rem;"><i class="fa-solid fa-circle-info me-1"></i>${l.note}</div>` : ''}
               </div>
               <div class="text-end">
                 ${statusBadge}
-                <div class="text-muted" style="font-size: 0.75rem;">ระยะ ${l.distance} ม.</div>
+                <div class="text-muted mt-1" style="font-size: 0.75rem;">ระยะ ${l.distance} ม.</div>
               </div>
             </li>`;
         });
         html += '</ul>';
         container.innerHTML = html;
-      }).getRecentLogs(currentUser.userId);
+      } catch (e) {
+        console.warn('โหลดประวัติล้มเหลว', e);
+      }
     }
 
-    function submitRegister() {
+    // เปิดแท็บ Admin Dashboard
+    function onOpenAdminTab() {
+      setContainerWide(true);
+      loadAdminDashboard();
+    }
+
+    // เปิดแท็บ อนุมัติ/จัดการสิทธิ์
+    function onOpenUsersManageTab() {
+      setContainerWide(true);
+      loadUsersManagement();
+    }
+
+    // โหลดข้อมูลหน้าอนุมัติและจัดการสิทธิ์พนักงาน
+    async function loadUsersManagement() {
+      if (!currentUser || (currentUser.role || '').toLowerCase() !== 'admin') return;
+
+      const pendingTbody = document.getElementById('pendingUsersTableBody');
+      const allTbody = document.getElementById('allUsersManageTableBody');
+
+      pendingTbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-3"><i class="fa-solid fa-spinner fa-spin me-2"></i>กำลังโหลดรายการ...</td></tr>`;
+      allTbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-4"><i class="fa-solid fa-spinner fa-spin me-2"></i>กำลังโหลดรายชื่อพนักงานทั้งหมด...</td></tr>`;
+
+      try {
+        const res = await callApi('getAllUsersForAdmin', { adminEmail: currentUser.email });
+        if (!res || !res.success) {
+          const msg = (res && res.message) || 'ไม่สามารถโหลดข้อมูลผู้ใช้งานได้';
+          pendingTbody.innerHTML = `<tr><td colspan="5" class="text-center text-danger py-3">${msg}</td></tr>`;
+          allTbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger py-3">${msg}</td></tr>`;
+          return;
+        }
+
+        renderUsersManagementTables(res);
+      } catch (err) {
+        pendingTbody.innerHTML = `<tr><td colspan="5" class="text-center text-danger py-3">${err.message}</td></tr>`;
+        allTbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger py-3">${err.message}</td></tr>`;
+      }
+    }
+
+    function renderUsersManagementTables(res) {
+      const users = res.users || [];
+      const pendingUsers = users.filter(u => u.status === 'INACTIVE');
+
+      // อัปเดต Badge แจ้งเตือน
+      const badge = document.getElementById('pendingBadgeCount');
+      if (pendingUsers.length > 0) {
+        badge.innerText = pendingUsers.length;
+        badge.style.display = 'inline-block';
+      } else {
+        badge.style.display = 'none';
+      }
+
+      document.getElementById('totalActiveUsersBadge').innerText = `ACTIVE: ${res.activeCount || 0}`;
+      document.getElementById('totalPendingUsersBadge').innerText = `INACTIVE (รออนุมัติ): ${res.pendingCount || 0}`;
+
+      // 1. ตารางรายการรออนุมัติ (INACTIVE)
+      const pendingTbody = document.getElementById('pendingUsersTableBody');
+      if (pendingUsers.length === 0) {
+        pendingTbody.innerHTML = `<tr><td colspan="5" class="text-center text-success py-3"><i class="fa-solid fa-circle-check me-1"></i>ไม่มีรายการค้างอนุมัติในขณะนี้</td></tr>`;
+      } else {
+        let pHtml = '';
+        pendingUsers.forEach(u => {
+          const safeName = (u.name || '').replace(/'/g, "\\'");
+          pHtml += `
+            <tr class="text-center bg-warning-subtle bg-opacity-25">
+              <td class="text-start">
+                <div class="fw-bold text-dark">${u.name}</div>
+                <small class="text-muted">${u.userId}</small>
+              </td>
+              <td class="text-start">${u.email}</td>
+              <td><span class="badge bg-light text-dark border">${u.branchName}</span></td>
+              <td><span class="badge bg-warning text-dark">INACTIVE (รออนุมัติ)</span></td>
+              <td>
+                <button class="btn btn-success btn-sm fw-bold px-3 shadow-sm" onclick="quickApproveUser('${u.userId}', '${safeName}')">
+                  <i class="fa-solid fa-check me-1"></i> อนุมัติเข้าใช้งาน (ACTIVE)
+                </button>
+              </td>
+            </tr>
+          `;
+        });
+        pendingTbody.innerHTML = pHtml;
+      }
+
+      // 2. ตารางจัดการสิทธิ์พนักงานทั้งหมด
+      const allTbody = document.getElementById('allUsersManageTableBody');
+      if (users.length === 0) {
+        allTbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-3">ไม่พบข้อมูลพนักงาน</td></tr>`;
+        return;
+      }
+
+      let aHtml = '';
+      users.forEach(u => {
+        const safeName = (u.name || '').replace(/'/g, "\\'");
+        let branchOptions = '';
+        branches.forEach(b => {
+          const selected = b.branchId === u.branchId ? 'selected' : '';
+          branchOptions += `<option value="${b.branchId}" ${selected}>${b.branchName}</option>`;
+        });
+
+        aHtml += `
+          <tr class="text-center">
+            <td class="text-start">
+              <div class="fw-bold text-dark">${u.name}</div>
+              <small class="text-muted">${u.userId}</small>
+            </td>
+            <td class="text-start small">${u.email}</td>
+            <td>
+              <select id="editBranch_${u.userId}" class="form-select form-select-sm" style="min-width: 130px;">
+                ${branchOptions}
+              </select>
+            </td>
+            <td>
+              <select id="editRole_${u.userId}" class="form-select form-select-sm fw-bold ${u.role === 'admin' ? 'text-danger' : 'text-primary'}" style="min-width: 110px;">
+                <option value="user" ${u.role === 'user' ? 'selected' : ''}>USER (พนักงาน)</option>
+                <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>ADMIN (ผู้ดูแล)</option>
+              </select>
+            </td>
+            <td>
+              <select id="editStatus_${u.userId}" class="form-select form-select-sm fw-bold ${u.status === 'ACTIVE' ? 'text-success' : 'text-warning-emphasis'}" style="min-width: 130px;">
+                <option value="ACTIVE" ${u.status === 'ACTIVE' ? 'selected' : ''}>ACTIVE (อนุมัติแล้ว)</option>
+                <option value="INACTIVE" ${u.status === 'INACTIVE' ? 'selected' : ''}>INACTIVE (ระงับ/รออนุมัติ)</option>
+              </select>
+            </td>
+            <td>
+              <input type="number" id="editOt_${u.userId}" class="form-control form-control-sm text-center" style="width: 95px; margin: 0 auto;" value="${u.otRatePerHour || 0}" min="0" step="0.01">
+            </td>
+            <td>
+              <button class="btn btn-primary btn-sm px-3 fw-bold" onclick="saveUserPermissionRow('${u.userId}', '${safeName}')">
+                <i class="fa-solid fa-floppy-disk me-1"></i> บันทึก
+              </button>
+            </td>
+          </tr>
+        `;
+      });
+      allTbody.innerHTML = aHtml;
+    }
+
+    // กดปุ่มอนุมัติด่วน (เปลี่ยน INACTIVE -> ACTIVE ทันที)
+    async function quickApproveUser(targetUserId, targetName) {
+      const confirm = await Swal.fire({
+        title: `อนุมัติผู้ใช้งาน?`,
+        text: `ต้องการอนุมัติให้ "${targetName}" (${targetUserId}) มีสถานะ ACTIVE เพื่อเข้าใช้งานระบบใช่หรือไม่?`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#198754',
+        confirmButtonText: 'ใช่, อนุมัติทันที',
+        cancelButtonText: 'ยกเลิก'
+      });
+
+      if (!confirm.isConfirmed) return;
+
+      Swal.fire({
+        title: 'กำลังอนุมัติผู้ใช้งาน...',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+      });
+
+      try {
+        const res = await callApi('updateUserPermission', {
+          adminEmail: currentUser.email,
+          targetUserId: targetUserId,
+          status: 'ACTIVE'
+        });
+
+        if (res.success) {
+          Swal.fire({
+            icon: 'success',
+            title: 'อนุมัติเรียบร้อย',
+            text: res.message,
+            timer: 2000,
+            showConfirmButton: false
+          });
+          loadUsersManagement();
+        } else {
+          Swal.fire('เกิดข้อผิดพลาด', res.message, 'error');
+        }
+      } catch (err) {
+        Swal.fire('เกิดข้อผิดพลาด', err.message, 'error');
+      }
+    }
+
+    // บันทึกการตั้งค่าสิทธิ์ (Role, Status, Branch, OT Rate) จากตารางจัดการสิทธิ์
+    async function saveUserPermissionRow(targetUserId, targetName) {
+      const branchId = document.getElementById(`editBranch_${targetUserId}`).value;
+      const role = document.getElementById(`editRole_${targetUserId}`).value;
+      const status = document.getElementById(`editStatus_${targetUserId}`).value;
+      const otRatePerHour = Number(document.getElementById(`editOt_${targetUserId}`).value) || 0;
+
+      Swal.fire({
+        title: 'กำลังบันทึกสิทธิ์...',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+      });
+
+      try {
+        const res = await callApi('updateUserPermission', {
+          adminEmail: currentUser.email,
+          targetUserId: targetUserId,
+          branchId: branchId,
+          role: role,
+          status: status,
+          otRatePerHour: otRatePerHour
+        });
+
+        if (res.success) {
+          Swal.fire({
+            icon: 'success',
+            title: 'บันทึกสำเร็จ',
+            text: res.message,
+            timer: 2000,
+            showConfirmButton: false
+          });
+          loadUsersManagement();
+        } else {
+          Swal.fire('เกิดข้อผิดพลาด', res.message, 'error');
+        }
+      } catch (err) {
+        Swal.fire('เกิดข้อผิดพลาด', err.message, 'error');
+      }
+    }
+
+    // โหลดข้อมูลแดชบอร์ดสรุปรายเดือนสำหรับ Admin
+    async function loadAdminDashboard() {
+      if (!currentUser || (currentUser.role || '').toLowerCase() !== 'admin') {
+        return;
+      }
+
+      const monthStr = document.getElementById('dashboardMonthPicker').value;
+      const tbody = document.getElementById('adminDashboardTableBody');
+      tbody.innerHTML = `<tr><td colspan="11" class="text-center text-muted py-4"><i class="fa-solid fa-spinner fa-spin me-2"></i>กำลังคำนวณข้อมูลเดือน ${monthStr}...</td></tr>`;
+
+      try {
+        const res = await callApi('getAdminDashboard', {
+          monthStr: monthStr,
+          adminEmail: currentUser.email
+        });
+
+        if (!res.success) {
+          tbody.innerHTML = `<tr><td colspan="11" class="text-center text-danger py-3">${res.message || 'ไม่สามารถโหลดข้อมูลได้'}</td></tr>`;
+          return;
+        }
+
+        renderAdminDashboardData(res);
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="11" class="text-center text-danger py-3">เกิดข้อผิดพลาด: ${err.message}</td></tr>`;
+      }
+    }
+
+    function renderAdminDashboardData(res) {
+      const totals = res.totals || {};
+      const rows = res.staffSummary || [];
+
+      document.getElementById('sumPresentDays').innerText = totals.presentDays ?? 0;
+      document.getElementById('sumLeaveDays').innerText = totals.leaveDays ?? 0;
+      document.getElementById('sumAbsentDays').innerText = totals.absentDays ?? 0;
+      document.getElementById('sumLateMinutes').innerText = `${totals.lateMinutes ?? 0}`;
+      document.getElementById('sumLateSub').innerText = `นาที (${totals.lateCount ?? 0} ครั้ง)`;
+      document.getElementById('sumOtMinutes').innerText = `${totals.otMinutes ?? 0}`;
+      document.getElementById('sumOtSub').innerText = `นาที (${totals.otHoursText || '0 นาที'})`;
+      document.getElementById('sumOtPayBaht').innerText = Number(totals.otPayBaht || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+      document.getElementById('workingDaysNote').innerText = `* เดือน ${res.monthStr}: วันทำการสะสม ${totals.workingDaysElapsed || 0} / ${totals.totalWorkingDaysInMonth || 0} วัน (จันทร์-ศุกร์)`;
+
+      const tbody = document.getElementById('adminDashboardTableBody');
+      if (rows.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="11" class="text-center text-muted py-3">ไม่พบรายชื่อพนักงานในระบบ</td></tr>`;
+        return;
+      }
+
+      let html = '';
+      rows.forEach(st => {
+        const otPayFormatted = Number(st.otPayBaht || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const otMinRateFormatted = Number(st.otRatePerMinute || 0).toFixed(2);
+        const safeName = (st.name || '').replace(/'/g, "\\'");
+        const statusTag = st.status === 'INACTIVE' ? '<span class="badge bg-warning text-dark ms-1">INACTIVE</span>' : '';
+
+        html += `
+          <tr class="text-center">
+            <td class="text-start">
+              <div class="fw-bold text-dark">${st.name} ${statusTag}</div>
+              <div class="text-muted" style="font-size: 0.72rem;">${st.userId} | ${st.role.toUpperCase()}</div>
+            </td>
+            <td><span class="badge bg-light text-dark border">${st.branchName}</span></td>
+            <td class="fw-bold text-success">${st.presentDays}</td>
+            <td class="fw-bold text-info-emphasis">${st.leaveDays}</td>
+            <td class="fw-bold ${st.absentDays > 0 ? 'text-danger' : 'text-muted'}">${st.absentDays}</td>
+            <td>
+              ${st.lateMinutes > 0 
+                ? `<span class="badge bg-warning text-dark">${st.lateCount} ครั้ง (${st.lateMinutes} นาที)</span>` 
+                : '<span class="text-muted">0</span>'}
+            </td>
+            <td>${Number(st.otRatePerHour || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            <td class="text-secondary">${otMinRateFormatted}</td>
+            <td>
+              ${st.otMinutes > 0 
+                ? `<span class="fw-bold text-primary">${st.otMinutes} นาที</span><div class="text-muted" style="font-size: 0.7rem;">(${st.otHoursText})</div>` 
+                : '<span class="text-muted">0</span>'}
+            </td>
+            <td class="bg-warning-subtle fw-bold text-dark">${otPayFormatted} ฿</td>
+            <td>
+              <button class="btn btn-outline-primary btn-sm py-0 px-2" onclick="promptEditOtRate('${st.userId}', '${safeName}', ${st.otRatePerHour || 0})">
+                <i class="fa-solid fa-pen-to-square"></i> แก้ไข
+              </button>
+            </td>
+          </tr>
+        `;
+      });
+
+      tbody.innerHTML = html;
+    }
+
+    // แก้ไขค่าโอทีต่อชั่วโมงของพนักงาน
+    async function promptEditOtRate(targetUserId, targetName, currentRate) {
+      const { value: newRate } = await Swal.fire({
+        title: `ตั้งค่าโอที: ${targetName}`,
+        input: 'number',
+        inputLabel: 'ค่าโอทีต่อชั่วโมง (บาท/ชม.) ระบบจะคำนวณโอทีต่อนาทีให้อัตโนมัติ',
+        inputValue: currentRate,
+        inputAttributes: {
+          min: 0,
+          step: '0.01'
+        },
+        showCancelButton: true,
+        confirmButtonText: 'บันทึก',
+        cancelButtonText: 'ยกเลิก'
+      });
+
+      if (newRate === undefined || newRate === null || newRate === '') return;
+
+      Swal.fire({
+        title: 'กำลังบันทึกค่าโอที...',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+      });
+
+      try {
+        const res = await callApi('updateUserOtRate', {
+          adminEmail: currentUser.email,
+          targetUserId: targetUserId,
+          otRatePerHour: Number(newRate)
+        });
+
+        if (res.success) {
+          Swal.fire({
+            icon: 'success',
+            title: 'สำเร็จ',
+            text: res.message,
+            timer: 2000,
+            showConfirmButton: false
+          });
+          loadAdminDashboard();
+        } else {
+          Swal.fire('เกิดข้อผิดพลาด', res.message, 'error');
+        }
+      } catch (e) {
+        Swal.fire('เกิดข้อผิดพลาด', e.message, 'error');
+      }
+    }
+
+    // ส่งข้อมูลลงทะเบียนใหม่
+    async function submitRegister() {
       const email = document.getElementById('regEmail').value.trim();
       const name = document.getElementById('regName').value.trim();
       const branchId = document.getElementById('regBranch').value;
@@ -676,24 +1262,28 @@
         didOpen: () => Swal.showLoading()
       });
 
-      google.script.run.withSuccessHandler(res => {
+      try {
+        const res = await callApi('registerUser', { name: name, branchId: branchId, email: email });
         if (res.success) {
           localStorage.setItem("attendance_user_email", email);
           Swal.fire({
-            icon: 'success',
-            title: 'ลงทะเบียนเรียบร้อย',
+            icon: 'info',
+            title: 'ลงทะเบียนสำเร็จ (รออนุมัติ)',
             text: res.message,
-            confirmButtonText: 'เข้าสู่ระบบ'
+            confirmButtonText: 'ตกลง'
           }).then(() => {
-            location.reload();
+            loadUserData(email);
           });
         } else {
           Swal.fire('เกิดข้อผิดพลาด', res.message, 'error');
         }
-      }).registerUser({ name: name, branchId: branchId, email: email });
+      } catch (e) {
+        Swal.fire('เกิดข้อผิดพลาด', e.message, 'error');
+      }
     }
 
-    function submitLeave() {
+    // ยื่นคำขอลางาน
+    async function submitLeave() {
       const type = document.getElementById('leaveType').value;
       const start = document.getElementById('leaveStart').value;
       const end = document.getElementById('leaveEnd').value;
@@ -710,26 +1300,31 @@
         didOpen: () => Swal.showLoading()
       });
 
-      google.script.run.withSuccessHandler(res => {
+      try {
+        const res = await callApi('submitLeave', {
+          userId: currentUser.userId,
+          leaveType: type,
+          startDate: start,
+          endDate: end,
+          reason: reason
+        });
+
         if (res.success) {
           Swal.fire('สำเร็จ', res.message, 'success');
           document.getElementById('leaveReason').value = '';
         } else {
           Swal.fire('เกิดข้อผิดพลาด', res.message, 'error');
         }
-      }).submitLeaveRequest({
-        userId: currentUser.userId,
-        leaveType: type,
-        startDate: start,
-        endDate: end,
-        reason: reason
-      });
+      } catch (e) {
+        Swal.fire('เกิดข้อผิดพลาด', e.message, 'error');
+      }
     }
 
+    // สลับบัญชี
     function logoutUser() {
       Swal.fire({
         title: 'สลับบัญชีผู้ใช้?',
-        text: 'คุณต้องการล้างข้อมูลที่จดจำไว้ในเครื่องนี้หรือไม่',
+        text: 'คุณต้องการเปลี่ยนผู้ใช้งานในเครื่องนี้หรือไม่',
         icon: 'question',
         showCancelButton: true,
         confirmButtonText: 'ใช่, สลับบัญชี',
