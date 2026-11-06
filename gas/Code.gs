@@ -62,6 +62,10 @@ function doPost(e) {
       result = saveBranch(req);
     } else if (action === "deleteBranch") {
       result = deleteBranch(req);
+    } else if (action === "getUserDailySummary") {
+      result = getUserDailySummary(req.userId || "", req.monthStr || "");
+    } else if (action === "getAdminDailySummary") {
+      result = getAdminDailySummary(req.dateStr || "", req.adminEmail || "", req.branchId || "");
     }
 
     return ContentService.createTextOutput(JSON.stringify(result))
@@ -1224,6 +1228,528 @@ function getAdminMonthlySummary(monthStr, adminEmail) {
     return {
       success: false,
       message: "เกิดข้อผิดพลาดในการคำนวณแดชบอร์ด: " + err.toString()
+    };
+  }
+}
+
+// 11. ตารางสรุปรายวันสำหรับพนักงาน (User Daily Summary) เลือกดูตามเดือน
+function getUserDailySummary(userId, monthStr) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var tz = Session.getScriptTimeZone();
+
+    if (!userId) {
+      return { success: false, message: "ไม่พบรหัสพนักงาน" };
+    }
+    if (!monthStr || monthStr.trim() === "") {
+      monthStr = Utilities.formatDate(new Date(), tz, "yyyy-MM");
+    }
+
+    var userSheet = ss.getSheetByName("Users");
+    var logSheet = ss.getSheetByName("Logs");
+    var leaveSheet = ss.getSheetByName("Leaves");
+    var branchSheet = ss.getSheetByName("Branches");
+
+    ensureUserHeaders(userSheet);
+    ensureLogHeaders(logSheet);
+
+    var usersData = userSheet ? userSheet.getDataRange().getValues() : [];
+    var logsData = logSheet ? logSheet.getDataRange().getValues() : [];
+    var leavesData = leaveSheet ? leaveSheet.getDataRange().getValues() : [];
+    var branchesData = branchSheet ? branchSheet.getDataRange().getValues() : [];
+
+    var branchMap = {};
+    for (var b = 1; b < branchesData.length; b++) {
+      if (branchesData[b][0]) {
+        branchMap[branchesData[b][0]] = {
+          name: branchesData[b][1] || branchesData[b][0],
+          workStart: formatSheetTime(branchesData[b][5], "08:30"),
+          workEnd: formatSheetTime(branchesData[b][6], "17:30")
+        };
+      }
+    }
+
+    var targetUser = null;
+    for (var u = 1; u < usersData.length; u++) {
+      if (usersData[u][0] === userId) {
+        var otHour = Number(usersData[u][6]) || 0;
+        var otMin = Number(usersData[u][7]);
+        if (isNaN(otMin) || (otMin === 0 && otHour > 0)) {
+          otMin = otHour / 60;
+        }
+        var bInfo = branchMap[usersData[u][3]] || { name: usersData[u][3] || "-", workStart: "08:30", workEnd: "17:30" };
+        targetUser = {
+          userId: usersData[u][0],
+          name: usersData[u][1] || userId,
+          branchId: usersData[u][3] || "",
+          branchName: bInfo.name,
+          workStart: bInfo.workStart,
+          workEnd: bInfo.workEnd,
+          otRatePerHour: Number(otHour.toFixed(2)),
+          otRatePerMinute: Number(otMin.toFixed(4))
+        };
+        break;
+      }
+    }
+
+    if (!targetUser) {
+      return { success: false, message: "ไม่พบข้อมูลพนักงานในระบบ" };
+    }
+
+    // เก็บข้อมูลการสแกนรายวันของพนักงานในเดือนที่เลือก
+    var dailyLogs = {};
+    for (var l = 1; l < logsData.length; l++) {
+      var row = logsData[l];
+      if (row[1] !== userId || !row[2]) continue;
+
+      var ts = row[2];
+      var dateStr = (ts instanceof Date)
+        ? Utilities.formatDate(ts, tz, "yyyy-MM-dd")
+        : ts.toString().substring(0, 10);
+
+      if (dateStr.substring(0, 7) !== monthStr) continue;
+
+      var timeStr = (ts instanceof Date)
+        ? Utilities.formatDate(ts, tz, "HH:mm")
+        : ts.toString().substring(11, 16);
+
+      if (!dailyLogs[dateStr]) {
+        dailyLogs[dateStr] = {
+          checkInTime: "",
+          checkOutTime: "",
+          checkInStatus: "",
+          checkOutStatus: "",
+          lateMinutes: 0,
+          otMinutes: 0,
+          earlyMinutes: 0,
+          notes: []
+        };
+      }
+
+      var dLog = dailyLogs[dateStr];
+      var lType = row[3];
+      var lStatus = row[7];
+      var lNote = row[8] ? row[8].toString() : "";
+
+      if (lType === "CHECK_IN") {
+        if (!dLog.checkInTime) {
+          dLog.checkInTime = timeStr;
+          dLog.checkInStatus = lStatus;
+          dLog.lateMinutes = extractLateMinutesFromRow(row);
+          if (lNote) dLog.notes.push(lNote);
+        }
+      } else if (lType === "CHECK_OUT") {
+        dLog.checkOutTime = timeStr;
+        dLog.checkOutStatus = lStatus;
+        dLog.otMinutes = Number(row[9]) || 0;
+        dLog.earlyMinutes = Number(row[10]) || 0;
+        if (lNote) dLog.notes.push(lNote);
+      }
+    }
+
+    // เก็บข้อมูลวันลาของพนักงานในเดือนที่เลือก
+    var leaveDates = {};
+    var leaveTypeLabels = { SICK: "ลาป่วย", BUSINESS: "ลากิจ", VACATION: "ลาพักร้อน" };
+    for (var lv = 1; lv < leavesData.length; lv++) {
+      var lvRow = leavesData[lv];
+      if (lvRow[1] !== userId || !lvRow[3] || !lvRow[4]) continue;
+      var lvStatus = (lvRow[6] || "PENDING").toString().toUpperCase();
+      if (lvStatus === "REJECTED" || lvStatus === "CANCELLED") continue;
+
+      var startStr = (lvRow[3] instanceof Date)
+        ? Utilities.formatDate(lvRow[3], tz, "yyyy-MM-dd")
+        : lvRow[3].toString().substring(0, 10);
+      var endStr = (lvRow[4] instanceof Date)
+        ? Utilities.formatDate(lvRow[4], tz, "yyyy-MM-dd")
+        : lvRow[4].toString().substring(0, 10);
+
+      var sParts = startStr.split("-");
+      var eParts = endStr.split("-");
+      if (sParts.length === 3 && eParts.length === 3) {
+        var curDate = new Date(parseInt(sParts[0], 10), parseInt(sParts[1], 10) - 1, parseInt(sParts[2], 10));
+        var endDate = new Date(parseInt(eParts[0], 10), parseInt(eParts[1], 10) - 1, parseInt(eParts[2], 10));
+        var safety = 0;
+        while (curDate <= endDate && safety < 366) {
+          var cStr = Utilities.formatDate(curDate, tz, "yyyy-MM-dd");
+          if (cStr.substring(0, 7) === monthStr) {
+            var lTypeKey = (lvRow[2] || "").toString().toUpperCase();
+            leaveDates[cStr] = {
+              leaveType: leaveTypeLabels[lTypeKey] || lTypeKey || "ลางาน",
+              reason: lvRow[5] || "",
+              status: lvStatus
+            };
+          }
+          curDate.setDate(curDate.getDate() + 1);
+          safety++;
+        }
+      }
+    }
+
+    // สร้างรายการสรุปรายวันในเดือนนั้น (แสดงตั้งแต่วันที่ 1 ถึงวันปัจจุบัน หรือสิ้นเดือนถ้าเป็นเดือนในอดีต)
+    var parts = monthStr.split("-");
+    var year = parseInt(parts[0], 10);
+    var month = parseInt(parts[1], 10);
+    var daysInMonth = new Date(year, month, 0).getDate();
+    var todayStr = Utilities.formatDate(new Date(), tz, "yyyy-MM-dd");
+    var thaiDays = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์"];
+
+    var dailyRows = [];
+    var summary = {
+      presentDays: 0,
+      leaveDays: 0,
+      absentDays: 0,
+      lateCount: 0,
+      lateMinutes: 0,
+      earlyMinutes: 0,
+      otMinutes: 0,
+      otPayBaht: 0
+    };
+
+    for (var d = 1; d <= daysInMonth; d++) {
+      var dStr = year + "-" + ("0" + month).slice(-2) + "-" + ("0" + d).slice(-2);
+      var dateObj = new Date(year, month - 1, d);
+      var dayOfWeek = dateObj.getDay();
+      var isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
+
+      var logItem = dailyLogs[dStr];
+      var leaveItem = leaveDates[dStr];
+
+      // ข้ามวันในอนาคตที่ยังมาไม่ถึง เว้นแต่มีการยื่นใบลาล่วงหน้าไว้
+      if (dStr > todayStr && !logItem && !leaveItem) {
+        continue;
+      }
+
+      var statusCode = "WEEKEND";
+      var statusLabel = "วันหยุดสุดสัปดาห์";
+      var checkInTime = "-";
+      var checkOutTime = "-";
+      var lateMin = 0;
+      var earlyMin = 0;
+      var otMinVal = 0;
+      var otPayVal = 0;
+      var noteText = "";
+
+      if (logItem) {
+        summary.presentDays++;
+        checkInTime = logItem.checkInTime || "-";
+        checkOutTime = logItem.checkOutTime || "-";
+        lateMin = logItem.lateMinutes || 0;
+        earlyMin = logItem.earlyMinutes || 0;
+        otMinVal = logItem.otMinutes || 0;
+        otPayVal = Number((otMinVal * targetUser.otRatePerMinute).toFixed(2));
+
+        if (lateMin > 0) {
+          summary.lateCount++;
+          summary.lateMinutes += lateMin;
+          statusCode = "LATE";
+          statusLabel = "มาสาย (" + lateMin + " นาที)";
+        } else {
+          statusCode = "PRESENT";
+          statusLabel = "มาทำงานปกติ";
+        }
+
+        if (otMinVal > 0) {
+          summary.otMinutes += otMinVal;
+          summary.otPayBaht += otPayVal;
+        }
+        if (earlyMin > 0) {
+          summary.earlyMinutes += earlyMin;
+        }
+        noteText = logItem.notes.join(" | ");
+      } else if (leaveItem) {
+        summary.leaveDays++;
+        statusCode = "LEAVE";
+        statusLabel = leaveItem.leaveType + (leaveItem.status === "PENDING" ? " (รออนุมัติ)" : "");
+        noteText = leaveItem.reason ? "เหตุผล: " + leaveItem.reason : "";
+      } else if (!isWeekend && dStr <= todayStr) {
+        summary.absentDays++;
+        statusCode = "ABSENT";
+        statusLabel = "ขาดงาน";
+        noteText = "ไม่พบประวัติสแกนเข้า-ออกงาน";
+      } else {
+        // วันหยุดเสาร์-อาทิตย์ที่ไม่ได้มาทำโอที ไม่ต้องแสดงก็ได้หรือแสดงเป็นวันหยุด
+        continue;
+      }
+
+      dailyRows.push({
+        dateStr: dStr,
+        dayName: thaiDays[dayOfWeek],
+        statusCode: statusCode,
+        statusLabel: statusLabel,
+        checkInTime: checkInTime,
+        checkOutTime: checkOutTime,
+        lateMinutes: lateMin,
+        earlyMinutes: earlyMin,
+        otMinutes: otMinVal,
+        otPayBaht: otPayVal,
+        note: noteText
+      });
+    }
+
+    // เรียงลำดับวันที่ล่าสุดขึ้นก่อน
+    dailyRows.reverse();
+    summary.otPayBaht = Number(summary.otPayBaht.toFixed(2));
+
+    return {
+      success: true,
+      monthStr: monthStr,
+      user: targetUser,
+      summary: summary,
+      dailyRows: dailyRows
+    };
+  } catch (err) {
+    return {
+      success: false,
+      message: "เกิดข้อผิดพลาดในการดึงตารางสรุปรายวัน: " + err.toString()
+    };
+  }
+}
+
+// 12. ตารางสรุปรายวันของพนักงานทุกคนสำหรับแอดมิน (Admin Daily Summary) เลือกดูตามวันที่และสาขา
+function getAdminDailySummary(dateStr, adminEmail, filterBranchId) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var tz = Session.getScriptTimeZone();
+
+    if (!dateStr || dateStr.trim() === "") {
+      dateStr = Utilities.formatDate(new Date(), tz, "yyyy-MM-dd");
+    }
+
+    var userSheet = ss.getSheetByName("Users");
+    var logSheet = ss.getSheetByName("Logs");
+    var leaveSheet = ss.getSheetByName("Leaves");
+    var branchSheet = ss.getSheetByName("Branches");
+
+    ensureUserHeaders(userSheet);
+    ensureLogHeaders(logSheet);
+
+    var usersData = userSheet ? userSheet.getDataRange().getValues() : [];
+    var logsData = logSheet ? logSheet.getDataRange().getValues() : [];
+    var leavesData = leaveSheet ? leaveSheet.getDataRange().getValues() : [];
+    var branchesData = branchSheet ? branchSheet.getDataRange().getValues() : [];
+
+    if (!verifyAdminAccess(usersData, adminEmail)) {
+      return {
+        success: false,
+        message: "ปฏิเสธการเข้าถึง: เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่สามารถดูตารางสรุปรายวันทั้งหมดได้"
+      };
+    }
+
+    var branchMap = {};
+    for (var b = 1; b < branchesData.length; b++) {
+      if (branchesData[b][0]) {
+        branchMap[branchesData[b][0]] = {
+          name: branchesData[b][1] || branchesData[b][0],
+          workStart: formatSheetTime(branchesData[b][5], "08:30"),
+          workEnd: formatSheetTime(branchesData[b][6], "17:30")
+        };
+      }
+    }
+
+    // ดึงข้อมูลสแกนของทุกคนในวันที่เลือก
+    var logsByUser = {};
+    for (var l = 1; l < logsData.length; l++) {
+      var row = logsData[l];
+      var lUid = row[1];
+      var lTs = row[2];
+      if (!lUid || !lTs) continue;
+
+      var rowDateStr = (lTs instanceof Date)
+        ? Utilities.formatDate(lTs, tz, "yyyy-MM-dd")
+        : lTs.toString().substring(0, 10);
+
+      if (rowDateStr !== dateStr) continue;
+
+      var timeStr = (lTs instanceof Date)
+        ? Utilities.formatDate(lTs, tz, "HH:mm")
+        : lTs.toString().substring(11, 16);
+
+      if (!logsByUser[lUid]) {
+        logsByUser[lUid] = {
+          checkInTime: "",
+          checkOutTime: "",
+          checkInPhoto: "",
+          checkOutPhoto: "",
+          lateMinutes: 0,
+          otMinutes: 0,
+          earlyMinutes: 0,
+          notes: []
+        };
+      }
+
+      var uLog = logsByUser[lUid];
+      var lType = row[3];
+      var photoUrl = row[6] ? row[6].toString() : "";
+      var noteStr = row[8] ? row[8].toString() : "";
+
+      if (lType === "CHECK_IN") {
+        if (!uLog.checkInTime) {
+          uLog.checkInTime = timeStr;
+          uLog.checkInPhoto = photoUrl;
+          uLog.lateMinutes = extractLateMinutesFromRow(row);
+          if (noteStr) uLog.notes.push(noteStr);
+        }
+      } else if (lType === "CHECK_OUT") {
+        uLog.checkOutTime = timeStr;
+        uLog.checkOutPhoto = photoUrl;
+        uLog.otMinutes = Number(row[9]) || 0;
+        uLog.earlyMinutes = Number(row[10]) || 0;
+        if (noteStr) uLog.notes.push(noteStr);
+      }
+    }
+
+    // ดึงข้อมูลการลาที่มีผลในวันที่เลือก
+    var leaveByUser = {};
+    var leaveTypeLabels = { SICK: "ลาป่วย", BUSINESS: "ลากิจ", VACATION: "ลาพักร้อน" };
+    for (var lv = 1; lv < leavesData.length; lv++) {
+      var lvRow = leavesData[lv];
+      var lvUid = lvRow[1];
+      if (!lvUid || !lvRow[3] || !lvRow[4]) continue;
+      var lvStatus = (lvRow[6] || "PENDING").toString().toUpperCase();
+      if (lvStatus === "REJECTED" || lvStatus === "CANCELLED") continue;
+
+      var startStr = (lvRow[3] instanceof Date)
+        ? Utilities.formatDate(lvRow[3], tz, "yyyy-MM-dd")
+        : lvRow[3].toString().substring(0, 10);
+      var endStr = (lvRow[4] instanceof Date)
+        ? Utilities.formatDate(lvRow[4], tz, "yyyy-MM-dd")
+        : lvRow[4].toString().substring(0, 10);
+
+      if (dateStr >= startStr && dateStr <= endStr) {
+        var lTypeKey = (lvRow[2] || "").toString().toUpperCase();
+        leaveByUser[lvUid] = {
+          leaveType: leaveTypeLabels[lTypeKey] || lTypeKey || "ลางาน",
+          reason: lvRow[5] || "",
+          status: lvStatus
+        };
+      }
+    }
+
+    var totals = {
+      totalStaff: 0,
+      presentCount: 0,
+      onTimeCount: 0,
+      lateCount: 0,
+      leaveCount: 0,
+      absentCount: 0,
+      totalLateMinutes: 0,
+      totalOtMinutes: 0,
+      totalOtPayBaht: 0
+    };
+
+    var staffDailyRows = [];
+
+    for (var i = 1; i < usersData.length; i++) {
+      var uid = usersData[i][0];
+      if (!uid) continue;
+
+      var uBranchId = (usersData[i][3] || "").toString().trim();
+      if (filterBranchId && filterBranchId !== "ALL" && uBranchId !== filterBranchId) {
+        continue;
+      }
+
+      var uStatus = (usersData[i][5] || "INACTIVE").toString().trim().toUpperCase();
+      var uName = usersData[i][1] || uid;
+      var uRole = (usersData[i][2] || "user").toString();
+      var otHour = Number(usersData[i][6]) || 0;
+      var otMinRate = Number(usersData[i][7]);
+      if (isNaN(otMinRate) || (otMinRate === 0 && otHour > 0)) {
+        otMinRate = otHour / 60;
+      }
+
+      var bInfo = branchMap[uBranchId] || { name: uBranchId || "-", workStart: "08:30", workEnd: "17:30" };
+      var uLog = logsByUser[uid];
+      var uLeave = leaveByUser[uid];
+
+      totals.totalStaff++;
+
+      var dayStatusCode = "ABSENT";
+      var dayStatusLabel = "ขาดงาน / ยังไม่สแกน";
+      var checkInTime = "-";
+      var checkOutTime = "-";
+      var lateMin = 0;
+      var earlyMin = 0;
+      var otMin = 0;
+      var otPay = 0;
+      var checkInPhoto = "";
+      var checkOutPhoto = "";
+      var noteText = "";
+
+      if (uLog) {
+        totals.presentCount++;
+        checkInTime = uLog.checkInTime || "-";
+        checkOutTime = uLog.checkOutTime || "-";
+        checkInPhoto = uLog.checkInPhoto || "";
+        checkOutPhoto = uLog.checkOutPhoto || "";
+        lateMin = uLog.lateMinutes || 0;
+        earlyMin = uLog.earlyMinutes || 0;
+        otMin = uLog.otMinutes || 0;
+        otPay = Number((otMin * otMinRate).toFixed(2));
+
+        if (lateMin > 0) {
+          totals.lateCount++;
+          totals.totalLateMinutes += lateMin;
+          dayStatusCode = "LATE";
+          dayStatusLabel = "สาย (" + lateMin + " นาที)";
+        } else {
+          totals.onTimeCount++;
+          dayStatusCode = "ONTIME";
+          dayStatusLabel = "มาตรงเวลา";
+        }
+
+        if (otMin > 0) {
+          totals.totalOtMinutes += otMin;
+          totals.totalOtPayBaht += otPay;
+        }
+        noteText = uLog.notes.join(" | ");
+      } else if (uLeave) {
+        totals.leaveCount++;
+        dayStatusCode = "LEAVE";
+        dayStatusLabel = uLeave.leaveType + (uLeave.status === "PENDING" ? " (รออนุมัติ)" : "");
+        noteText = uLeave.reason ? "เหตุผล: " + uLeave.reason : "";
+      } else if (uStatus === "INACTIVE") {
+        dayStatusCode = "INACTIVE";
+        dayStatusLabel = "รออนุมัติสิทธิ์ (INACTIVE)";
+      } else {
+        totals.absentCount++;
+      }
+
+      staffDailyRows.push({
+        userId: uid,
+        name: uName,
+        role: uRole,
+        userStatus: uStatus,
+        branchId: uBranchId,
+        branchName: bInfo.name,
+        workSchedule: bInfo.workStart + "-" + bInfo.workEnd,
+        dayStatusCode: dayStatusCode,
+        dayStatusLabel: dayStatusLabel,
+        checkInTime: checkInTime,
+        checkOutTime: checkOutTime,
+        checkInPhoto: checkInPhoto,
+        checkOutPhoto: checkOutPhoto,
+        lateMinutes: lateMin,
+        earlyMinutes: earlyMin,
+        otRatePerHour: Number(otHour.toFixed(2)),
+        otRatePerMinute: Number(otMinRate.toFixed(4)),
+        otMinutes: otMin,
+        otPayBaht: otPay,
+        note: noteText
+      });
+    }
+
+    totals.totalOtPayBaht = Number(totals.totalOtPayBaht.toFixed(2));
+
+    return {
+      success: true,
+      dateStr: dateStr,
+      totals: totals,
+      staffDailyRows: staffDailyRows
+    };
+  } catch (err) {
+    return {
+      success: false,
+      message: "เกิดข้อผิดพลาดในการดึงตารางสรุปรายวันแอดมิน: " + err.toString()
     };
   }
 }

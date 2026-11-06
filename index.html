@@ -254,6 +254,18 @@
             <i class="fa-solid fa-envelope-open-text me-1"></i>แจ้งลางาน
           </button>
         </li>
+        <!-- แท็บตารางสรุปรายวันของพนักงาน (สำหรับ User ทุกคน) -->
+        <li class="nav-item">
+          <button class="nav-link fw-bold" data-bs-toggle="pill" data-bs-target="#tab-user-daily" onclick="onOpenUserDailyTab()">
+            <i class="fa-solid fa-calendar-day me-1"></i>สรุปรายวันของฉัน
+          </button>
+        </li>
+        <!-- แท็บตารางสรุปรายวันของทุกคน (เฉพาะ Admin) -->
+        <li class="nav-item" id="adminDailyNavTab" style="display: none;">
+          <button class="nav-link fw-bold" data-bs-toggle="pill" data-bs-target="#tab-admin-daily" onclick="onOpenAdminDailyTab()">
+            <i class="fa-solid fa-clipboard-list me-1"></i>สรุปรายวัน (Admin)
+          </button>
+        </li>
         <!-- แท็บแดชบอร์ดสรุปรายเดือน (เฉพาะ Admin) -->
         <li class="nav-item" id="adminNavTab" style="display: none;">
           <button class="nav-link fw-bold" data-bs-toggle="pill" data-bs-target="#tab-admin" onclick="onOpenAdminTab()">
@@ -357,6 +369,198 @@
             <button class="btn btn-primary w-100 py-2 fw-bold shadow-sm" onclick="submitLeave()">
               <i class="fa-solid fa-paper-plane me-1"></i> ส่งคำขออนุมัติลา
             </button>
+          </div>
+        </div>
+
+        <!-- 2.1 แท็บตารางสรุปรายวันของฉัน (สำหรับ User ทุกคน) -->
+        <div class="tab-pane fade" id="tab-user-daily">
+          <div class="card card-main p-4 bg-white mb-3">
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+              <div>
+                <h5 class="fw-bold text-dark mb-0">
+                  <i class="fa-solid fa-calendar-day text-primary me-2"></i>ตารางสรุปเวลาทำงานและโอทีรายวันของฉัน
+                </h5>
+                <small class="text-muted" id="userDailySubTitle">แสดงรายละเอียดเวลาเข้า-ออกงาน สาย โอที และค่าโอทีในแต่ละวัน</small>
+              </div>
+              <div class="d-flex flex-wrap align-items-center gap-2">
+                <input type="month" id="userDailyMonthPicker" class="form-control form-control-sm" style="width: 155px;" onchange="loadUserDailySummary()">
+                <button class="btn btn-primary btn-sm px-3 fw-bold" onclick="loadUserDailySummary()">
+                  <i class="fa-solid fa-arrows-rotate me-1"></i>โหลดข้อมูล
+                </button>
+                <button class="btn btn-success btn-sm px-3 fw-bold shadow-sm" onclick="exportUserDailyToExcel()">
+                  <i class="fa-solid fa-file-excel me-1"></i>ส่งออก Excel
+                </button>
+              </div>
+            </div>
+
+            <!-- การ์ดสรุปประจำเดือนของ User -->
+            <div class="row g-2 mb-3">
+              <div class="col-6 col-md-2">
+                <div class="stat-card bg-success-subtle border-success-subtle text-center">
+                  <div class="small text-success fw-bold">มาทำงาน</div>
+                  <div class="fs-5 fw-bold text-success mt-1" id="uSumPresent">-</div>
+                  <div class="text-muted" style="font-size: 0.72rem;">วัน</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-2">
+                <div class="stat-card bg-info-subtle border-info-subtle text-center">
+                  <div class="small text-info-emphasis fw-bold">ลางาน</div>
+                  <div class="fs-5 fw-bold text-info-emphasis mt-1" id="uSumLeave">-</div>
+                  <div class="text-muted" style="font-size: 0.72rem;">วัน</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-2">
+                <div class="stat-card bg-danger-subtle border-danger-subtle text-center">
+                  <div class="small text-danger fw-bold">ขาดงาน</div>
+                  <div class="fs-5 fw-bold text-danger mt-1" id="uSumAbsent">-</div>
+                  <div class="text-muted" style="font-size: 0.72rem;">วัน</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-2">
+                <div class="stat-card bg-warning-subtle border-warning-subtle text-center">
+                  <div class="small text-warning-emphasis fw-bold">เข้าสายรวม</div>
+                  <div class="fs-5 fw-bold text-warning-emphasis mt-1" id="uSumLateMins">-</div>
+                  <div class="text-muted" style="font-size: 0.72rem;" id="uSumLateCount">นาที</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-2">
+                <div class="stat-card bg-primary-subtle border-primary-subtle text-center">
+                  <div class="small text-primary fw-bold">เวลาโอทีรวม</div>
+                  <div class="fs-5 fw-bold text-primary mt-1" id="uSumOtMins">-</div>
+                  <div class="text-muted" style="font-size: 0.72rem;" id="uSumOtText">นาที</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-2">
+                <div class="stat-card bg-dark text-white text-center">
+                  <div class="small text-warning fw-bold">ค่าโอทีสะสม</div>
+                  <div class="fs-5 fw-bold text-warning mt-1" id="uSumOtPay">-</div>
+                  <div class="text-white-50" style="font-size: 0.72rem;">บาท</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ตารางสรุปรายวันของ User -->
+            <div class="table-responsive">
+              <table class="table table-hover table-bordered table-dashboard align-middle mb-0">
+                <thead>
+                  <tr class="text-center">
+                    <th>วันที่</th>
+                    <th>วัน</th>
+                    <th>สถานะ</th>
+                    <th class="text-success">เวลาเข้างาน</th>
+                    <th class="text-danger">เวลาออกงาน</th>
+                    <th class="text-warning-emphasis">เข้าสาย (นาที)</th>
+                    <th class="text-danger">ออกก่อน (นาที)</th>
+                    <th class="text-primary">โอที (นาที)</th>
+                    <th class="bg-warning-subtle text-dark">เงินค่าโอที (บาท)</th>
+                    <th class="text-start">หมายเหตุ / หลักฐานภาพถ่าย</th>
+                  </tr>
+                </thead>
+                <tbody id="userDailyTableBody">
+                  <tr>
+                    <td colspan="10" class="text-center text-muted py-4">กำลังโหลดข้อมูลสรุปรายวัน...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2.2 แท็บตารางสรุปรายวันของพนักงานทุกคน (เฉพาะแอดมิน) -->
+        <div class="tab-pane fade" id="tab-admin-daily">
+          <div class="card card-main p-4 bg-white mb-3">
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+              <div>
+                <h5 class="fw-bold text-dark mb-0">
+                  <i class="fa-solid fa-clipboard-list text-primary me-2"></i>ตารางสรุปการลงเวลารายวันของพนักงานทั้งหมด (Admin)
+                </h5>
+                <small class="text-muted" id="adminDailySubTitle">ตรวจสอบเวลาเข้า-ออกงาน สถานะมา/สาย/ลา/ขาด รูปถ่าย และค่าโอทีรายวันของพนักงานทุกคน</small>
+              </div>
+              <div class="d-flex flex-wrap align-items-center gap-2">
+                <select id="adminDailyBranchFilter" class="form-select form-select-sm" style="width: 185px;" onchange="loadAdminDailySummary()">
+                  <option value="ALL">ทุกสาขา (ทั้งหมด)</option>
+                </select>
+                <input type="date" id="adminDailyDatePicker" class="form-control form-control-sm" style="width: 150px;" onchange="loadAdminDailySummary()">
+                <button class="btn btn-primary btn-sm px-3 fw-bold" onclick="loadAdminDailySummary()">
+                  <i class="fa-solid fa-arrows-rotate me-1"></i>ค้นหา
+                </button>
+                <button class="btn btn-success btn-sm px-3 fw-bold shadow-sm" onclick="exportAdminDailyToExcel()">
+                  <i class="fa-solid fa-file-excel me-1"></i>ส่งออก Excel รายวัน
+                </button>
+              </div>
+            </div>
+
+            <!-- การ์ดสรุปภาพรวมรายวัน (Admin) -->
+            <div class="row g-2 mb-3">
+              <div class="col-6 col-md-2">
+                <div class="stat-card bg-success-subtle border-success-subtle text-center">
+                  <div class="small text-success fw-bold">มาทำงานวันนี้</div>
+                  <div class="fs-5 fw-bold text-success mt-1" id="aDailyPresent">-</div>
+                  <div class="text-muted" style="font-size: 0.72rem;" id="aDailyOnTimeSub">คน</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-2">
+                <div class="stat-card bg-warning-subtle border-warning-subtle text-center">
+                  <div class="small text-warning-emphasis fw-bold">มาสายวันนี้</div>
+                  <div class="fs-5 fw-bold text-warning-emphasis mt-1" id="aDailyLateCount">-</div>
+                  <div class="text-muted" style="font-size: 0.72rem;" id="aDailyLateMinsSub">คน (0 นาที)</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-2">
+                <div class="stat-card bg-info-subtle border-info-subtle text-center">
+                  <div class="small text-info-emphasis fw-bold">ลางานวันนี้</div>
+                  <div class="fs-5 fw-bold text-info-emphasis mt-1" id="aDailyLeave">-</div>
+                  <div class="text-muted" style="font-size: 0.72rem;">คน</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-2">
+                <div class="stat-card bg-danger-subtle border-danger-subtle text-center">
+                  <div class="small text-danger fw-bold">ขาดงาน/ยังไม่สแกน</div>
+                  <div class="fs-5 fw-bold text-danger mt-1" id="aDailyAbsent">-</div>
+                  <div class="text-muted" style="font-size: 0.72rem;">คน</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-2">
+                <div class="stat-card bg-primary-subtle border-primary-subtle text-center">
+                  <div class="small text-primary fw-bold">โอทีรวมวันนี้</div>
+                  <div class="fs-5 fw-bold text-primary mt-1" id="aDailyOtMins">-</div>
+                  <div class="text-muted" style="font-size: 0.72rem;" id="aDailyOtText">นาที</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-2">
+                <div class="stat-card bg-dark text-white text-center">
+                  <div class="small text-warning fw-bold">ค่าโอทีวันนี้รวม</div>
+                  <div class="fs-5 fw-bold text-warning mt-1" id="aDailyOtPay">-</div>
+                  <div class="text-white-50" style="font-size: 0.72rem;">บาท</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ตารางสรุปรายวันของพนักงานทุกคน (Admin) -->
+            <div class="table-responsive">
+              <table class="table table-hover table-bordered table-dashboard align-middle mb-0">
+                <thead>
+                  <tr class="text-center">
+                    <th class="text-start">พนักงาน</th>
+                    <th>สาขา (เวลาทำงาน)</th>
+                    <th>สถานะวันนี้</th>
+                    <th class="text-success">เวลาเข้างาน</th>
+                    <th class="text-danger">เวลาออกงาน</th>
+                    <th class="text-warning-emphasis">เข้าสาย (นาที)</th>
+                    <th class="text-danger">ออกก่อน (นาที)</th>
+                    <th>ค่าโอที/ชม.</th>
+                    <th class="text-primary">โอที (นาที)</th>
+                    <th class="bg-warning-subtle text-dark">ค่าโอทีวันนี้ (บาท)</th>
+                    <th class="text-start">หมายเหตุ / ใบลา</th>
+                  </tr>
+                </thead>
+                <tbody id="adminDailyTableBody">
+                  <tr>
+                    <td colspan="11" class="text-center text-muted py-4">กำลังโหลดข้อมูลสรุปรายวัน...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
 
@@ -646,6 +850,8 @@
     let currentPosition = null;
     let videoStream = null;
     let lastDashboardResponse = null;
+    let lastUserDailyResponse = null;
+    let lastAdminDailyResponse = null;
 
     // ฟังก์ชันเชื่อมต่อไปยัง Google Apps Script ผ่าน POST
     async function callApi(action, data = {}) {
@@ -665,10 +871,16 @@
       const now = new Date();
       const yyyy = now.getFullYear();
       const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+
       const monthInput = document.getElementById('dashboardMonthPicker');
-      if (monthInput) {
-        monthInput.value = `${yyyy}-${mm}`;
-      }
+      if (monthInput) monthInput.value = `${yyyy}-${mm}`;
+
+      const userMonthInput = document.getElementById('userDailyMonthPicker');
+      if (userMonthInput) userMonthInput.value = `${yyyy}-${mm}`;
+
+      const adminDateInput = document.getElementById('adminDailyDatePicker');
+      if (adminDateInput) adminDateInput.value = `${yyyy}-${mm}-${dd}`;
 
       watchLocation();
       initUserSession();
@@ -756,11 +968,22 @@
 
     function populateBranchSelectDropdowns() {
       const branchSelect = document.getElementById('regBranch');
-      if (!branchSelect) return;
-      branchSelect.innerHTML = '';
-      branches.forEach(b => {
-        branchSelect.innerHTML += `<option value="${b.branchId}">${b.branchName} (${b.workStart}-${b.workEnd})</option>`;
-      });
+      if (branchSelect) {
+        branchSelect.innerHTML = '';
+        branches.forEach(b => {
+          branchSelect.innerHTML += `<option value="${b.branchId}">${b.branchName} (${b.workStart}-${b.workEnd})</option>`;
+        });
+      }
+
+      const adminBranchFilter = document.getElementById('adminDailyBranchFilter');
+      if (adminBranchFilter) {
+        const currentVal = adminBranchFilter.value || 'ALL';
+        adminBranchFilter.innerHTML = `<option value="ALL">ทุกสาขา (ทั้งหมด)</option>`;
+        branches.forEach(b => {
+          const sel = b.branchId === currentVal ? 'selected' : '';
+          adminBranchFilter.innerHTML += `<option value="${b.branchId}" ${sel}>${b.branchName} (${b.workStart}-${b.workEnd})</option>`;
+        });
+      }
     }
 
     // โหลดข้อมูลผู้ใช้จาก Google Sheets
@@ -808,6 +1031,7 @@
           document.getElementById('mainSection').style.display = 'block';
 
           // แสดงแท็บสำหรับ Admin เท่านั้น
+          document.getElementById('adminDailyNavTab').style.display = isAdmin ? 'block' : 'none';
           document.getElementById('adminNavTab').style.display = isAdmin ? 'block' : 'none';
           document.getElementById('adminUsersNavTab').style.display = isAdmin ? 'block' : 'none';
           document.getElementById('adminBranchesNavTab').style.display = isAdmin ? 'block' : 'none';
@@ -997,6 +1221,18 @@
       }
     }
 
+    // เปิดแท็บ ตารางสรุปรายวันของฉัน (User)
+    function onOpenUserDailyTab() {
+      setContainerWide(true);
+      loadUserDailySummary();
+    }
+
+    // เปิดแท็บ ตารางสรุปรายวันของทุกคน (Admin)
+    function onOpenAdminDailyTab() {
+      setContainerWide(true);
+      loadAdminDailySummary();
+    }
+
     // เปิดแท็บ Admin Dashboard
     function onOpenAdminTab() {
       setContainerWide(true);
@@ -1013,6 +1249,333 @@
     function onOpenBranchesManageTab() {
       setContainerWide(true);
       loadBranchesManagement();
+    }
+
+    // ==========================================
+    // ระบบตารางสรุปรายวันของพนักงาน (สำหรับ User)
+    // ==========================================
+    async function loadUserDailySummary() {
+      if (!currentUser) return;
+      const monthStr = document.getElementById('userDailyMonthPicker').value;
+      const tbody = document.getElementById('userDailyTableBody');
+      tbody.innerHTML = `<tr><td colspan="10" class="text-center text-muted py-4"><i class="fa-solid fa-spinner fa-spin me-2"></i>กำลังโหลดตารางสรุปรายวันเดือน ${monthStr}...</td></tr>`;
+
+      try {
+        const res = await callApi('getUserDailySummary', {
+          userId: currentUser.userId,
+          monthStr: monthStr
+        });
+
+        if (!res || !res.success) {
+          tbody.innerHTML = `<tr><td colspan="10" class="text-center text-danger py-3">${(res && res.message) || 'โหลดข้อมูลสรุปรายวันไม่สำเร็จ'}</td></tr>`;
+          return;
+        }
+
+        lastUserDailyResponse = res;
+        renderUserDailySummary(res);
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="10" class="text-center text-danger py-3">เกิดข้อผิดพลาด: ${err.message}</td></tr>`;
+      }
+    }
+
+    function renderUserDailySummary(res) {
+      const uInfo = res.userInfo || {};
+      const sum = res.summary || {};
+      const rows = res.dailyRows || [];
+
+      document.getElementById('userDailySubTitle').innerText =
+        `พนักงาน: ${uInfo.name || ''} (${uInfo.userId || ''}) | สาขา: ${uInfo.branchName || ''} (${uInfo.workStart || ''}-${uInfo.workEnd || ''}) | ค่าโอที: ${Number(uInfo.otRatePerHour || 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท/ชม. (${Number(uInfo.otRatePerMinute || 0).toFixed(2)} บาท/นาที)`;
+
+      document.getElementById('uSumPresent').innerText = sum.presentDays ?? 0;
+      document.getElementById('uSumLeave').innerText = sum.leaveDays ?? 0;
+      document.getElementById('uSumAbsent').innerText = sum.absentDays ?? 0;
+      document.getElementById('uSumLateMins').innerText = sum.lateMinutes ?? 0;
+      document.getElementById('uSumLateCount').innerText = `นาที (${sum.lateCount ?? 0} ครั้ง)`;
+      document.getElementById('uSumOtMins').innerText = sum.otMinutes ?? 0;
+      document.getElementById('uSumOtText').innerText = `นาที (${sum.otHoursText || '0 นาที'})`;
+      document.getElementById('uSumOtPay').innerText = Number(sum.otPayBaht || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+      const tbody = document.getElementById('userDailyTableBody');
+      if (rows.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="10" class="text-center text-muted py-3">ยังไม่มีข้อมูลรายวันในเดือนนี้</td></tr>`;
+        return;
+      }
+
+      let html = '';
+      rows.forEach(r => {
+        let statusBadge = '';
+        let rowClass = '';
+        if (r.status === 'ONTIME') {
+          statusBadge = '<span class="badge bg-success-subtle text-success border border-success-subtle">มาปกติ</span>';
+        } else if (r.status === 'LATE') {
+          statusBadge = '<span class="badge bg-warning text-dark">มาสาย</span>';
+          rowClass = 'bg-warning-subtle bg-opacity-10';
+        } else if (r.status === 'LEAVE') {
+          statusBadge = `<span class="badge bg-info-subtle text-info-emphasis border border-info-subtle">${r.statusText}</span>`;
+          rowClass = 'bg-info-subtle bg-opacity-10';
+        } else if (r.status === 'ABSENT') {
+          statusBadge = '<span class="badge bg-danger-subtle text-danger border border-danger-subtle">ขาดงาน</span>';
+          rowClass = 'bg-danger-subtle bg-opacity-10';
+        } else {
+          statusBadge = `<span class="badge bg-light text-secondary border">${r.statusText}</span>`;
+          rowClass = 'text-muted bg-light';
+        }
+
+        const photoLinks = [];
+        if (r.checkInPhoto) {
+          photoLinks.push(`<a href="${r.checkInPhoto}" target="_blank" class="badge bg-success-subtle text-success text-decoration-none border me-1"><i class="fa-solid fa-camera me-1"></i>รูปเข้า</a>`);
+        }
+        if (r.checkOutPhoto) {
+          photoLinks.push(`<a href="${r.checkOutPhoto}" target="_blank" class="badge bg-danger-subtle text-danger text-decoration-none border"><i class="fa-solid fa-camera me-1"></i>รูปออก</a>`);
+        }
+
+        html += `
+          <tr class="text-center ${rowClass}">
+            <td class="fw-medium">${r.date}</td>
+            <td>${r.dayName}</td>
+            <td>${statusBadge}</td>
+            <td class="fw-bold ${r.checkInTime !== '-' ? 'text-success' : 'text-muted'}">${r.checkInTime}</td>
+            <td class="fw-bold ${r.checkOutTime !== '-' ? 'text-danger' : 'text-muted'}">${r.checkOutTime}</td>
+            <td>${r.lateMinutes > 0 ? `<span class="badge bg-warning text-dark">${r.lateMinutes} นาที</span>` : '<span class="text-muted">0</span>'}</td>
+            <td>${r.earlyLeaveMinutes > 0 ? `<span class="badge bg-danger text-white">${r.earlyLeaveMinutes} นาที</span>` : '<span class="text-muted">0</span>'}</td>
+            <td>${r.otMinutes > 0 ? `<span class="fw-bold text-primary">${r.otMinutes} นาที</span>` : '<span class="text-muted">0</span>'}</td>
+            <td class="bg-warning-subtle fw-bold text-dark">${Number(r.otPayBaht || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</td>
+            <td class="text-start small">
+              <div>${r.note || '-'}</div>
+              ${photoLinks.length > 0 ? `<div class="mt-1">${photoLinks.join('')}</div>` : ''}
+            </td>
+          </tr>
+        `;
+      });
+
+      tbody.innerHTML = html;
+    }
+
+    function exportUserDailyToExcel() {
+      if (!lastUserDailyResponse || !lastUserDailyResponse.dailyRows || lastUserDailyResponse.dailyRows.length === 0) {
+        Swal.fire('ยังไม่มีข้อมูลสำหรับส่งออก', 'กรุณารอให้ตารางสรุปรายวันโหลดเสร็จก่อน', 'warning');
+        return;
+      }
+
+      const uInfo = lastUserDailyResponse.userInfo || {};
+      const monthStr = lastUserDailyResponse.monthStr || document.getElementById('userDailyMonthPicker').value;
+      const rows = lastUserDailyResponse.dailyRows;
+      const sum = lastUserDailyResponse.summary || {};
+
+      const excelData = rows.map(r => ({
+        'วันที่': r.date,
+        'วัน': r.dayName,
+        'สถานะ': r.statusText,
+        'เวลาเข้างาน': r.checkInTime,
+        'เวลาออกงาน': r.checkOutTime,
+        'เข้าสาย (นาที)': r.lateMinutes,
+        'ออกก่อน (นาที)': r.earlyLeaveMinutes,
+        'เวลาโอที (นาที)': r.otMinutes,
+        'ค่าโอที (บาท)': Number(r.otPayBaht || 0),
+        'หมายเหตุ': r.note || ''
+      }));
+
+      excelData.push({
+        'วันที่': 'สรุปรวมทั้งเดือน',
+        'วัน': `มา ${sum.presentDays || 0} วัน`,
+        'สถานะ': `ลา ${sum.leaveDays || 0} / ขาด ${sum.absentDays || 0} วัน`,
+        'เวลาเข้างาน': '',
+        'เวลาออกงาน': '',
+        'เข้าสาย (นาที)': sum.lateMinutes || 0,
+        'ออกก่อน (นาที)': sum.earlyLeaveMinutes || 0,
+        'เวลาโอที (นาที)': sum.otMinutes || 0,
+        'ค่าโอที (บาท)': Number(sum.otPayBaht || 0),
+        'หมายเหตุ': sum.otHoursText || ''
+      });
+
+      if (typeof XLSX !== 'undefined') {
+        const ws = XLSX.utils.json_to_sheet(excelData);
+        ws['!cols'] = [
+          { wch: 15 }, { wch: 12 }, { wch: 22 }, { wch: 14 }, { wch: 14 },
+          { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 35 }
+        ];
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, `รายวัน_${monthStr}`);
+        XLSX.writeFile(wb, `สรุปรายวัน_${uInfo.name || uInfo.userId}_${monthStr}.xlsx`);
+      }
+    }
+
+    // ==========================================
+    // ระบบตารางสรุปรายวันของพนักงานทุกคน (สำหรับ Admin)
+    // ==========================================
+    async function loadAdminDailySummary() {
+      if (!currentUser || (currentUser.role || '').toLowerCase() !== 'admin') return;
+
+      const dateStr = document.getElementById('adminDailyDatePicker').value;
+      const filterBranchId = document.getElementById('adminDailyBranchFilter').value || 'ALL';
+      const tbody = document.getElementById('adminDailyTableBody');
+      tbody.innerHTML = `<tr><td colspan="11" class="text-center text-muted py-4"><i class="fa-solid fa-spinner fa-spin me-2"></i>กำลังโหลดข้อมูลรายวันประจำวันที่ ${dateStr}...</td></tr>`;
+
+      try {
+        const res = await callApi('getAdminDailySummary', {
+          dateStr: dateStr,
+          adminEmail: currentUser.email,
+          filterBranchId: filterBranchId
+        });
+
+        if (!res || !res.success) {
+          tbody.innerHTML = `<tr><td colspan="11" class="text-center text-danger py-3">${(res && res.message) || 'โหลดข้อมูลสรุปรายวันไม่สำเร็จ'}</td></tr>`;
+          return;
+        }
+
+        lastAdminDailyResponse = res;
+        renderAdminDailySummary(res);
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="11" class="text-center text-danger py-3">เกิดข้อผิดพลาด: ${err.message}</td></tr>`;
+      }
+    }
+
+    function renderAdminDailySummary(res) {
+      const sum = res.summary || {};
+      const rows = res.rows || [];
+
+      document.getElementById('adminDailySubTitle').innerText =
+        `ข้อมูลประจำวัน${res.dayName || ''}ที่ ${res.dateStr || ''} | พนักงานทั้งหมดในรายการ: ${sum.totalUsers || 0} คน`;
+
+      document.getElementById('aDailyPresent').innerText = sum.presentCount ?? 0;
+      document.getElementById('aDailyOnTimeSub').innerText = `คน (ตรงเวลา ${sum.onTimeCount ?? 0} คน)`;
+      document.getElementById('aDailyLateCount').innerText = sum.lateCount ?? 0;
+      document.getElementById('aDailyLateMinsSub').innerText = `คน (รวม ${sum.totalLateMinutes ?? 0} นาที)`;
+      document.getElementById('aDailyLeave').innerText = sum.leaveCount ?? 0;
+      document.getElementById('aDailyAbsent').innerText = sum.absentCount ?? 0;
+      document.getElementById('aDailyOtMins').innerText = sum.totalOtMinutes ?? 0;
+      document.getElementById('aDailyOtText').innerText = `นาที (${sum.totalOtHoursText || '0 นาที'})`;
+      document.getElementById('aDailyOtPay').innerText = Number(sum.totalOtPayBaht || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+      const tbody = document.getElementById('adminDailyTableBody');
+      if (rows.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="11" class="text-center text-muted py-3">ไม่พบรายชื่อพนักงานตามเงื่อนไขที่เลือก</td></tr>`;
+        return;
+      }
+
+      let html = '';
+      rows.forEach(r => {
+        let statusBadge = '';
+        let rowClass = '';
+        if (r.attendanceStatus === 'ONTIME') {
+          statusBadge = '<span class="badge bg-success-subtle text-success border border-success-subtle">มาตรงเวลา</span>';
+        } else if (r.attendanceStatus === 'LATE') {
+          statusBadge = '<span class="badge bg-warning text-dark">มาสาย</span>';
+          rowClass = 'bg-warning-subtle bg-opacity-10';
+        } else if (r.attendanceStatus === 'LEAVE') {
+          statusBadge = `<span class="badge bg-info-subtle text-info-emphasis border border-info-subtle">${r.attendanceText}</span>`;
+          rowClass = 'bg-info-subtle bg-opacity-10';
+        } else if (r.attendanceStatus === 'ABSENT') {
+          statusBadge = `<span class="badge bg-danger-subtle text-danger border border-danger-subtle">${r.attendanceText}</span>`;
+          rowClass = 'bg-danger-subtle bg-opacity-10';
+        } else if (r.attendanceStatus === 'INACTIVE') {
+          statusBadge = '<span class="badge bg-secondary">รออนุมัติ (INACTIVE)</span>';
+          rowClass = 'text-muted bg-light';
+        } else {
+          statusBadge = `<span class="badge bg-light text-secondary border">${r.attendanceText}</span>`;
+        }
+
+        const inPhotoBtn = r.checkInPhoto
+          ? `<div class="mt-1"><a href="${r.checkInPhoto}" target="_blank" class="badge bg-success-subtle text-success text-decoration-none border"><i class="fa-solid fa-image me-1"></i>ดูรูปเข้า (${r.checkInDist}ม.)</a></div>`
+          : '';
+        const outPhotoBtn = r.checkOutPhoto
+          ? `<div class="mt-1"><a href="${r.checkOutPhoto}" target="_blank" class="badge bg-danger-subtle text-danger text-decoration-none border"><i class="fa-solid fa-image me-1"></i>ดูรูปออก (${r.checkOutDist}ม.)</a></div>`
+          : '';
+
+        html += `
+          <tr class="text-center ${rowClass}">
+            <td class="text-start">
+              <div class="fw-bold text-dark">${r.name}</div>
+              <small class="text-muted">${r.userId} | ${r.role.toUpperCase()}</small>
+            </td>
+            <td>
+              <span class="badge bg-light text-dark border">${r.branchName}</span>
+              <div class="text-muted" style="font-size: 0.7rem;">${r.workStart}-${r.workEnd} น.</div>
+            </td>
+            <td>${statusBadge}</td>
+            <td>
+              <span class="fw-bold ${r.checkInTime !== '-' ? 'text-success' : 'text-muted'}">${r.checkInTime}</span>
+              ${inPhotoBtn}
+            </td>
+            <td>
+              <span class="fw-bold ${r.checkOutTime !== '-' ? 'text-danger' : 'text-muted'}">${r.checkOutTime}</span>
+              ${outPhotoBtn}
+            </td>
+            <td>${r.lateMinutes > 0 ? `<span class="badge bg-warning text-dark">${r.lateMinutes} นาที</span>` : '<span class="text-muted">0</span>'}</td>
+            <td>${r.earlyLeaveMinutes > 0 ? `<span class="badge bg-danger text-white">${r.earlyLeaveMinutes} นาที</span>` : '<span class="text-muted">0</span>'}</td>
+            <td>
+              <div>${Number(r.otRatePerHour || 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })} ฿</div>
+              <small class="text-muted" style="font-size: 0.7rem;">(${Number(r.otRatePerMinute || 0).toFixed(2)} ฿/นาที)</small>
+            </td>
+            <td>${r.otMinutes > 0 ? `<span class="fw-bold text-primary">${r.otMinutes} นาที</span>` : '<span class="text-muted">0</span>'}</td>
+            <td class="bg-warning-subtle fw-bold text-dark">${Number(r.otPayBaht || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</td>
+            <td class="text-start small">${r.note || '-'}</td>
+          </tr>
+        `;
+      });
+
+      tbody.innerHTML = html;
+    }
+
+    function exportAdminDailyToExcel() {
+      if (!lastAdminDailyResponse || !lastAdminDailyResponse.rows || lastAdminDailyResponse.rows.length === 0) {
+        Swal.fire('ยังไม่มีข้อมูลสำหรับส่งออก', 'กรุณารอให้ตารางสรุปรายวันโหลดเสร็จก่อน', 'warning');
+        return;
+      }
+
+      const dateStr = lastAdminDailyResponse.dateStr || document.getElementById('adminDailyDatePicker').value;
+      const rows = lastAdminDailyResponse.rows;
+      const sum = lastAdminDailyResponse.summary || {};
+
+      const excelData = rows.map((r, idx) => ({
+        'ลำดับ': idx + 1,
+        'วันที่': dateStr,
+        'รหัสพนักงาน': r.userId,
+        'ชื่อ-นามสกุล': r.name,
+        'สาขา': r.branchName,
+        'เวลาเข้า-ออกสาขา': `${r.workStart}-${r.workEnd}`,
+        'สถานะวันนี้': r.attendanceText,
+        'เวลาสแกนเข้า': r.checkInTime,
+        'เวลาสแกนออก': r.checkOutTime,
+        'เข้าสาย (นาที)': r.lateMinutes,
+        'ออกก่อน (นาที)': r.earlyLeaveMinutes,
+        'ค่าโอที/ชม. (บาท)': Number(r.otRatePerHour || 0),
+        'โอที/นาที (บาท)': Number(Number(r.otRatePerMinute || 0).toFixed(4)),
+        'เวลาโอที (นาที)': r.otMinutes,
+        'เงินค่าโอทีวันนี้ (บาท)': Number(r.otPayBaht || 0),
+        'หมายเหตุ': r.note || ''
+      }));
+
+      excelData.push({
+        'ลำดับ': '',
+        'วันที่': 'สรุปรวมประจำวัน',
+        'รหัสพนักงาน': `รวม ${rows.length} คน`,
+        'ชื่อ-นามสกุล': `มาทำงาน ${sum.presentCount || 0} คน`,
+        'สาขา': `สาย ${sum.lateCount || 0} / ลา ${sum.leaveCount || 0} / ขาด ${sum.absentCount || 0}`,
+        'เวลาเข้า-ออกสาขา': '',
+        'สถานะวันนี้': '',
+        'เวลาสแกนเข้า': '',
+        'เวลาสแกนออก': '',
+        'เข้าสาย (นาที)': sum.totalLateMinutes || 0,
+        'ออกก่อน (นาที)': sum.totalEarlyLeaveMinutes || 0,
+        'ค่าโอที/ชม. (บาท)': '',
+        'โอที/นาที (บาท)': '',
+        'เวลาโอที (นาที)': sum.totalOtMinutes || 0,
+        'เงินค่าโอทีวันนี้ (บาท)': Number(sum.totalOtPayBaht || 0),
+        'หมายเหตุ': sum.totalOtHoursText || ''
+      });
+
+      if (typeof XLSX !== 'undefined') {
+        const ws = XLSX.utils.json_to_sheet(excelData);
+        ws['!cols'] = [
+          { wch: 7 }, { wch: 13 }, { wch: 13 }, { wch: 24 }, { wch: 22 },
+          { wch: 15 }, { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 15 },
+          { wch: 15 }, { wch: 18 }, { wch: 16 }, { wch: 16 }, { wch: 20 }, { wch: 32 }
+        ];
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, `รายวัน_${dateStr}`);
+        XLSX.writeFile(wb, `สรุปการลงเวลารายวัน_Admin_${dateStr}.xlsx`);
+      }
     }
 
     // ==========================================
