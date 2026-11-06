@@ -3461,6 +3461,290 @@
       }
     }
 
+    // ==========================================
+    // ระบบการลางาน: สำหรับพนักงาน (ดูประวัติการลา)
+    // ==========================================
+    async function loadMyLeaves() {
+      const container = document.getElementById('myLeavesList');
+      if (!container || !currentUser) return;
+      
+      try {
+        const res = await callApi('getUserLeaves', { userId: currentUser.userId });
+        if (!res || !res.success) {
+          container.innerHTML = '<div class="text-center text-muted py-3 small">ไม่สามารถดึงข้อมูลประวัติการลาได้</div>';
+          return;
+        }
+
+        const leaves = res.leaves || [];
+        if (leaves.length === 0) {
+          container.innerHTML = '<div class="text-center text-muted py-3 small">ยังไม่มีประวัติการยื่นขอลางาน</div>';
+          return;
+        }
+
+        let out = '<div class="list-group list-group-flush">';
+        leaves.forEach(l => {
+          let badgeClass = 'bg-secondary';
+          if (l.status === 'PENDING') badgeClass = 'bg-warning text-dark';
+          else if (l.status === 'APPROVED') badgeClass = 'bg-success';
+          else if (l.status === 'REJECTED') badgeClass = 'bg-danger';
+
+          out += `
+            <div class="list-group-item px-0 py-2 border-bottom">
+              <div class="d-flex justify-content-between align-items-center mb-1">
+                <div>
+                  <span class="badge ${badgeClass} me-1">${l.statusLabel || l.status}</span>
+                  <span class="fw-bold text-dark small">${l.leaveTypeLabel || l.leaveType}</span>
+                </div>
+                <small class="text-muted" style="font-size: 0.72rem;">${l.createdAt || ''}</small>
+              </div>
+              <div class="small text-secondary mb-1">
+                <i class="fa-regular fa-calendar me-1"></i>${l.startDate} ถึง ${l.endDate} (${l.daysCount} วัน)
+              </div>
+              <div class="small text-muted fst-italic">"${l.reason}"</div>
+              ${l.status === 'REJECTED' && l.rejectReason ? `<div class="small text-danger mt-1"><i class="fa-solid fa-triangle-exclamation me-1"></i>เหตุผลที่ไม่อนุมัติ: ${l.rejectReason}</div>` : ''}
+              ${l.status === 'APPROVED' && l.approvedBy ? `<div class="small text-success mt-1" style="font-size: 0.72rem;"><i class="fa-solid fa-check me-1"></i>อนุมัติโดย: ${l.approvedBy} (${l.approvedAt || ''})</div>` : ''}
+            </div>
+          `;
+        });
+        out += '</div>';
+        container.innerHTML = out;
+      } catch (e) {
+        console.warn('loadMyLeaves error:', e);
+        container.innerHTML = '<div class="text-center text-danger py-2 small">โหลดข้อมูลไม่สำเร็จ: ' + e.message + '</div>';
+      }
+    }
+
+    // ==========================================
+    // ระบบการลางาน: สำหรับ Admin (อนุมัติ / ไม่อนุมัติ)
+    // ==========================================
+    function onOpenLeavesManageTab() {
+      loadLeavesManagement();
+    }
+
+    async function loadLeavesManagement() {
+      const tbody = document.getElementById('adminLeavesTableBody');
+      if (tbody) {
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4"><i class="fa-solid fa-spinner fa-spin me-2"></i>กำลังโหลดรายการคำขอลางาน...</td></tr>';
+      }
+
+      try {
+        const res = await callApi('getLeavesForAdmin', { adminEmail: currentUser.email });
+        if (!res || !res.success) {
+          Swal.fire('เกิดข้อผิดพลาด', res ? res.message : 'ไม่สามารถโหลดข้อมูลการลาได้', 'error');
+          return;
+        }
+
+        lastLeavesAdminResponse = res;
+
+        // อัปเดตการ์ดสรุปยอด
+        const pEl = document.getElementById('sumLeavePending');
+        const aEl = document.getElementById('sumLeaveApproved');
+        const rEl = document.getElementById('sumLeaveRejected');
+        const tEl = document.getElementById('sumLeaveTotal');
+        if (pEl) pEl.innerText = res.pendingCount || 0;
+        if (aEl) aEl.innerText = res.approvedCount || 0;
+        if (rEl) rEl.innerText = res.rejectedCount || 0;
+        if (tEl) tEl.innerText = res.totalCount || 0;
+
+        // อัปเดต badge เมนูแท็บ
+        const badge = document.getElementById('pendingLeavesBadgeCount');
+        if (badge) {
+          if (res.pendingCount > 0) {
+            badge.innerText = res.pendingCount;
+            badge.style.display = 'inline-block';
+          } else {
+            badge.style.display = 'none';
+          }
+        }
+
+        filterAdminLeavesTable();
+      } catch (err) {
+        console.error('loadLeavesManagement error:', err);
+        if (tbody) {
+          tbody.innerHTML = `<tr><td colspan="9" class="text-center text-danger py-4">โหลดข้อมูลล้มเหลว: ${err.message}</td></tr>`;
+        }
+      }
+    }
+
+    function filterAdminLeavesTable() {
+      if (!lastLeavesAdminResponse || !lastLeavesAdminResponse.leaves) return;
+      const statusFilter = (document.getElementById('leaveFilterStatus') ? document.getElementById('leaveFilterStatus').value : 'ALL');
+      const typeFilter = (document.getElementById('leaveFilterType') ? document.getElementById('leaveFilterType').value : 'ALL');
+
+      let filtered = lastLeavesAdminResponse.leaves.filter(l => {
+        if (statusFilter !== 'ALL' && l.status !== statusFilter) return false;
+        if (typeFilter !== 'ALL' && l.leaveType !== typeFilter) return false;
+        return true;
+      });
+
+      renderAdminLeavesTable(filtered);
+    }
+
+    function renderAdminLeavesTable(leaves) {
+      const tbody = document.getElementById('adminLeavesTableBody');
+      if (!tbody) return;
+
+      if (!leaves || leaves.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">ไม่พบรายการคำขอลางานตามเงื่อนไขที่เลือก</td></tr>';
+        return;
+      }
+
+      let rowsHtml = '';
+      leaves.forEach(l => {
+        let badgeClass = 'bg-secondary';
+        if (l.status === 'PENDING') badgeClass = 'bg-warning text-dark';
+        else if (l.status === 'APPROVED') badgeClass = 'bg-success';
+        else if (l.status === 'REJECTED') badgeClass = 'bg-danger';
+
+        const safeName = (l.userName || l.userId || '').replace(/'/g, "\\'");
+        const isPending = l.status === 'PENDING';
+
+        rowsHtml += `
+          <tr>
+            <td class="text-center">
+              <span class="badge bg-light text-dark border font-monospace">${l.leaveId}</span>
+              <div class="text-muted" style="font-size: 0.72rem;">${l.createdAt || ''}</div>
+            </td>
+            <td>
+              <div class="fw-bold text-dark">${l.userName || '-'}</div>
+              <small class="text-muted font-monospace">${l.userId} (${l.userEmail || '-'})</small>
+            </td>
+            <td class="text-center small">${l.branchName || l.branchId || '-'}</td>
+            <td class="text-center">
+              <span class="badge bg-primary-subtle text-primary border border-primary-subtle">${l.leaveTypeLabel || l.leaveType}</span>
+            </td>
+            <td class="text-center">
+              <div class="small fw-bold">${l.startDate} ถึง ${l.endDate}</div>
+              <span class="badge bg-info text-dark" style="font-size: 0.7rem;">${l.daysCount} วัน</span>
+            </td>
+            <td class="small" style="max-width: 220px; word-break: break-word;">${l.reason || '-'}</td>
+            <td class="text-center">
+              <span class="badge ${badgeClass}">${l.statusLabel || l.status}</span>
+            </td>
+            <td class="small text-center">
+              ${l.approvedBy ? `<div><span class="fw-bold">${l.approvedBy}</span></div><div class="text-muted" style="font-size: 0.7rem;">${l.approvedAt || ''}</div>` : '-'}
+              ${l.status === 'REJECTED' && l.rejectReason ? `<div class="text-danger small mt-1">เหตุผล: ${l.rejectReason}</div>` : ''}
+            </td>
+            <td class="text-center">
+              ${isPending ? `
+                <div class="btn-group btn-group-sm" role="group">
+                  <button class="btn btn-success fw-bold px-2" onclick="reviewLeaveRequest('${l.leaveId}', 'APPROVED', '${safeName}')" title="อนุมัติการลา">
+                    <i class="fa-solid fa-check me-1"></i>อนุมัติ
+                  </button>
+                  <button class="btn btn-danger fw-bold px-2" onclick="reviewLeaveRequest('${l.leaveId}', 'REJECTED', '${safeName}')" title="ไม่อนุมัติการลา">
+                    <i class="fa-solid fa-xmark me-1"></i>ไม่อนุมัติ
+                  </button>
+                </div>
+              ` : `
+                <span class="text-muted small">ดำเนินการแล้ว</span>
+              `}
+            </td>
+          </tr>
+        `;
+      });
+
+      tbody.innerHTML = rowsHtml;
+    }
+
+    async function reviewLeaveRequest(leaveId, newStatus, userName) {
+      if (newStatus === 'APPROVED') {
+        const confirm = await Swal.fire({
+          title: 'ยืนยันอนุมัติคำขอลางาน?',
+          text: `คุณต้องการอนุมัติการลางานของ "${userName}" (รหัส ${leaveId}) ใช่หรือไม่`,
+          icon: 'question',
+          showCancelButton: true,
+          confirmButtonText: 'ใช่, อนุมัติการลา',
+          cancelButtonText: 'ยกเลิก',
+          confirmButtonColor: '#198754'
+        });
+        if (!confirm.isConfirmed) return;
+
+        Swal.fire({ title: 'กำลังบันทึก...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+        try {
+          const res = await callApi('updateLeaveStatus', {
+            leaveId: leaveId,
+            status: 'APPROVED'
+          });
+          if (res.success) {
+            Swal.fire({ icon: 'success', title: 'อนุมัติเรียบร้อย', text: res.message, timer: 2000, showConfirmButton: false });
+            loadLeavesManagement();
+          } else {
+            Swal.fire('เกิดข้อผิดพลาด', res.message, 'error');
+          }
+        } catch (e) {
+          Swal.fire('เกิดข้อผิดพลาด', e.message, 'error');
+        }
+      } else if (newStatus === 'REJECTED') {
+        const prompt = await Swal.fire({
+          title: 'ไม่อนุมัติคำขอลางาน',
+          text: `กรุณาระบุเหตุผลที่ไม่อนุมัติการลาของ "${userName}"`,
+          input: 'textarea',
+          inputPlaceholder: 'เช่น เอกสารไม่ครบถ้วน หรือมีภารกิจด่วนในช่วงเวลาดังกล่าว',
+          showCancelButton: true,
+          confirmButtonText: 'ยืนยันไม่อนุมัติ',
+          cancelButtonText: 'ยกเลิก',
+          confirmButtonColor: '#dc3545',
+          inputValidator: (val) => {
+            if (!val || !val.trim()) return 'กรุณาระบุเหตุผลที่ไม่อนุมัติ';
+          }
+        });
+        if (!prompt.isConfirmed) return;
+
+        Swal.fire({ title: 'กำลังบันทึก...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+        try {
+          const res = await callApi('updateLeaveStatus', {
+            leaveId: leaveId,
+            status: 'REJECTED',
+            rejectReason: prompt.value.trim()
+          });
+          if (res.success) {
+            Swal.fire({ icon: 'success', title: 'บันทึกเรียบร้อย', text: res.message, timer: 2000, showConfirmButton: false });
+            loadLeavesManagement();
+          } else {
+            Swal.fire('เกิดข้อผิดพลาด', res.message, 'error');
+          }
+        } catch (e) {
+          Swal.fire('เกิดข้อผิดพลาด', e.message, 'error');
+        }
+      }
+    }
+
+    function exportLeavesToExcel() {
+      if (!lastLeavesAdminResponse || !lastLeavesAdminResponse.leaves || lastLeavesAdminResponse.leaves.length === 0) {
+        Swal.fire('ไม่มีข้อมูล', 'ไม่มีรายการคำขอลางานสำหรับการส่งออก', 'info');
+        return;
+      }
+
+      if (typeof XLSX === 'undefined') {
+        Swal.fire('เกิดข้อผิดพลาด', 'ไม่พบไลบรารีส่งออก Excel (SheetJS)', 'error');
+        return;
+      }
+
+      const rows = lastLeavesAdminResponse.leaves.map(l => ({
+        "รหัสคำขอ": l.leaveId,
+        "วันที่ยื่น": l.createdAt,
+        "รหัสพนักงาน": l.userId,
+        "ชื่อ-นามสกุล": l.userName,
+        "อีเมล": l.userEmail,
+        "สาขา": l.branchName || l.branchId,
+        "ประเภทการลา": l.leaveTypeLabel || l.leaveType,
+        "ตั้งแต่วันที่": l.startDate,
+        "ถึงวันที่": l.endDate,
+        "จำนวนวันลา": l.daysCount,
+        "เหตุผลการลา": l.reason,
+        "สถานะ": l.statusLabel || l.status,
+        "ผู้อนุมัติ/ผู้ตรวจสอบ": l.approvedBy || '',
+        "วันที่ตรวจสอบ": l.approvedAt || '',
+        "เหตุผลที่ไม่อนุมัติ": l.rejectReason || ''
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'LeaveRequests');
+      const fileName = `leave_requests_${new Date().toISOString().substring(0, 10)}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+    }
+
     // ออกจากระบบ / สลับบัญชี
     function logoutUser() {
       Swal.fire({
